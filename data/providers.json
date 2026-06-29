@@ -1,0 +1,92 @@
+[
+    {
+        "id": "DR001",
+        "name": "Dr. Anjali Rao",
+        "specialty": "Cardiology",
+        "facility": "Indiranagar Heart Clinic",
+        "area": "Indiranagar",
+        "lat": 12.9719,
+        "lng": 77.6412
+    },
+    {
+        "id": "DR002",
+        "name": "Dr. Vikram Shetty",
+        "specialty": "Cardiology",
+        "facility": "Whitefield Cardiac Care",
+        "area": "Whitefield",
+        "lat": 12.9698,
+        "lng": 77.7500
+    },
+    {
+        "id": "DR003",
+        "name": "Dr. Meera Iyer",
+        "specialty": "Cardiology",
+        "facility": "HSR Cardiology Center",
+        "area": "HSR Layout",
+        "lat": 12.9116,
+        "lng": 77.6389
+    },
+    {
+        "id": "DR004",
+        "name": "Dr. Sanjay Gupta",
+        "specialty": "Orthopedics",
+        "facility": "Jayanagar Bone & Joint",
+        "area": "Jayanagar",
+        "lat": 12.9250,
+        "lng": 77.5938
+    },
+    {
+        "id": "DR005",
+        "name": "Dr. Priya Nair",
+        "specialty": "Orthopedics",
+        "facility": "Koramangala Ortho Hospital",
+        "area": "Koramangala",
+        "lat": 12.9352,
+        "lng": 77.6245
+    },
+    {
+        "id": "DR006",
+        "name": "Dr. Rahul Menon",
+        "specialty": "Dermatology",
+        "facility": "MG Road Skin Clinic",
+        "area": "MG Road",
+        "lat": 12.9756,
+        "lng": 77.6068
+    },
+    {
+        "id": "DR007",
+        "name": "Dr. Kavya Reddy",
+        "specialty": "Neurology",
+        "facility": "Malleshwaram Neuro Institute",
+        "area": "Malleshwaram",
+        "lat": 13.0035,
+        "lng": 77.5647
+    },
+    {
+        "id": "DR008",
+        "name": "Dr. Arjun Pillai",
+        "specialty": "General Medicine",
+        "facility": "Electronic City Clinic",
+        "area": "Electronic City",
+        "lat": 12.8452,
+        "lng": 77.6602
+    },
+    {
+        "id": "DR009",
+        "name": "Dr. Sneha Joshi",
+        "specialty": "General Medicine",
+        "facility": "Koramangala Family Health",
+        "area": "Koramangala",
+        "lat": 12.9340,
+        "lng": 77.6280
+    },
+    {
+        "id": "DR010",
+        "name": "Dr. Imran Khan",
+        "specialty": "Cardiology",
+        "facility": "Jayanagar Heart Institute",
+        "area": "Jayanagar",
+        "lat": 12.9260,
+        "lng": 77.5930
+    }
+]

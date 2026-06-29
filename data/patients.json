@@ -1,0 +1,32 @@
+{
+    "P001": {
+        "patient_id": "P001",
+        "name": "Ramesh Kumar",
+        "age": 58,
+        "area": "Koramangala",
+        "lat": 12.9352,
+        "lng": 77.6245,
+        "history": [
+            "Hypertension",
+            "Type 2 Diabetes"
+        ],
+        "current_medications": [
+            "Amlodipine",
+            "Metformin"
+        ]
+    },
+    "P002": {
+        "patient_id": "P002",
+        "name": "Lakshmi Devi",
+        "age": 34,
+        "area": "Whitefield",
+        "lat": 12.9698,
+        "lng": 77.7500,
+        "history": [
+            "Asthma"
+        ],
+        "current_medications": [
+            "Salbutamol inhaler"
+        ]
+    }
+}
