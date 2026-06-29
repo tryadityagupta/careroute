@@ -44,7 +44,7 @@ python tools.py
 
 Test the agent LOOP without spending tokens (mocked model):
 ```bash
-OPENAI_API_KEY=sk-mock python mock_test.py
+OPENAI_API_KEY=sk-mock python mocktest.py
 ```
 
 ## What I'd do for production (talking points)

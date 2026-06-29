@@ -11,10 +11,13 @@ This is what turns a pile of functions into an *agent*. The pattern is:
 The model drives. We just execute what it asks for and hand back results.
 """
 
-import json
-import os
-from openai import OpenAI
+
 from tools import TOOL_REGISTRY
+from openai import OpenAI
+import os
+import json
+from dotenv import load_dotenv
+load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -85,7 +88,7 @@ Reason step by step:
 1. Decide which medical SPECIALTY the complaint requires (e. g. chest pain -> Cardiology).
 2. Use get_patient_record to fetch the patient's location and history.
 3. Use find_providers to get the nearest matching specialists.
-4. Give a short, clear recommendation nameing the providers and their distances,
+4. Give a short, clear recommendation naming the providers and their distances,
     and briefly note any relevant item from the patient's history.
 
 Only use the tools provided. If a tool returns an error, explain the problem.
