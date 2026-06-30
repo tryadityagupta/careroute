@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse
 from fastapi import FastAPI
 import os
 from dotenv import load_dotenv
+from osm import find_providers
 
 # Load OPENAI_API_KEY from .env BEFORE importing agent — agent.py builds the
 # OpenAI client at import time, so the key must be in the environment first.
@@ -29,6 +30,17 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )
+
+
+class LocationRequest(BaseModel):
+    specialty: str
+    lat: float
+    lng: float
+
+
+@app.post("/api/find")
+def find(req: LocationRequest):
+    return find_providers(req.specialty, req.lat, req.lng)
 
 
 class CareRequest(BaseModel):

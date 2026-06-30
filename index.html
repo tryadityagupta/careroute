@@ -204,6 +204,39 @@
             }
         });
     </script>
+
+    <script>
+        function getLocation() {
+            if (!navigator.geolocation) {
+                alert("Geolocation not supported by this browser.");
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    // send to your FastAPI backend
+                    runAgent(lat, lng);
+                },
+                (err) => {
+                    // user denied, or it timed out — fall back to stored patient coords
+                    console.warn("Location error:", err.message);
+                    alert("Couldn't get location: " + err.message);
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        async function runAgent(lat, lng) {
+            const resp = await fetch("/api/find", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ specialty: "Cardiology", lat, lng }),
+            });
+            const data = await resp.json();
+            console.log(data);
+        }
+    </script>
 </body>
 
 </html>
