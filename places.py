@@ -20,6 +20,9 @@ from math import radians, sin, cos, sqrt, atan2
 GOOGLE_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 _TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 
+# Places API caps circle-bias radius at 50 km; clamp model-supplied values.
+_MAX_RADIUS_M = 50000
+
 
 def _haversine_km(lat1, lng1, lat2, lng2):
     """Great-circle distance in km (same proximity math as the dummy version)."""
@@ -31,14 +34,18 @@ def _haversine_km(lat1, lng1, lat2, lng2):
     return round(R * 2 * atan2(sqrt(a), sqrt(1 - a)), 2)
 
 
-def find_providers(specialty: str, patient_lat: float, patient_lng: float, k: int = 3) -> list:
+def find_providers(specialty: str, patient_lat: float, patient_lng: float,
+                   k: int = 3, radius_m: int = 8000) -> list | dict:
     """Find the k nearest REAL providers of a specialty via Google Places.
 
-    Identical signature to the dummy version — that's the whole point. The agent
-    can't tell the difference; only the data source changed.
+    Identical signature to the dummy and OSM versions — that's the whole point.
+    The agent can't tell the difference; only the data source changed. radius_m
+    feeds the locationBias circle (clamped to the API's 50 km max).
     """
     if not GOOGLE_KEY:
-        return [{"error": "GOOGLE_MAPS_API_KEY not set"}]
+        return {"error": "GOOGLE_MAPS_API_KEY not set"}
+
+    radius_m = max(500, min(int(radius_m), _MAX_RADIUS_M))
 
     headers = {
         "Content-Type": "application/json",
@@ -52,7 +59,7 @@ def find_providers(specialty: str, patient_lat: float, patient_lng: float, k: in
         "locationBias": {
             "circle": {
                 "center": {"latitude": patient_lat, "longitude": patient_lng},
-                "radius": 10000.0,
+                "radius": float(radius_m),
             }
         },
         "maxResultCount": 10,
@@ -63,7 +70,7 @@ def find_providers(specialty: str, patient_lat: float, patient_lng: float, k: in
             _TEXT_SEARCH_URL, headers=headers, json=body, timeout=10)
         resp.raise_for_status()
     except requests.RequestException as e:
-        return [{"error": f"Places API call failed: {e}"}]
+        return {"error": f"Places API call failed: {e}"}
 
     places = resp.json().get("places", [])
     results = []
@@ -80,13 +87,72 @@ def find_providers(specialty: str, patient_lat: float, patient_lng: float, k: in
             "distance_km": _haversine_km(patient_lat, patient_lng, lat, lng),
         })
 
+    if not results:
+        return {
+            "match_found": False,
+            "reason": f"Google Places returned no results for '{specialty}' near the patient.",
+            "hint": "Retry with a larger radius_m, or try a broader specialty term.",
+        }
+
     # Places returns by its own relevance; WE re-rank strictly by distance.
     results.sort(key=lambda x: x["distance_km"])
     return results[:k]
 
 
+def find_general_facilities(patient_lat: float, patient_lng: float,
+                            k: int = 3, radius_m: int = 8000) -> dict:
+    """Nearest healthcare facilities of ANY type — explicitly NOT specialists.
+
+    Only call after find_providers reported match_found=false. Items are
+    labelled is_specialist_match=false so they cannot be quietly upgraded.
+    """
+    if not GOOGLE_KEY:
+        return {"error": "GOOGLE_MAPS_API_KEY not set"}
+
+    radius_m = max(500, min(int(radius_m), _MAX_RADIUS_M))
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_KEY,
+        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location",
+    }
+    body = {
+        "textQuery": "hospital or clinic",
+        "locationBias": {"circle": {
+            "center": {"latitude": patient_lat, "longitude": patient_lng},
+            "radius": float(radius_m)}},
+        "maxResultCount": 10,
+    }
+    try:
+        resp = requests.post(
+            _TEXT_SEARCH_URL, headers=headers, json=body, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        return {"error": f"Places API call failed: {e}"}
+
+    results = []
+    for p in resp.json().get("places", []):
+        loc = p.get("location", {})
+        lat, lng = loc.get("latitude"), loc.get("longitude")
+        if lat is None or lng is None:
+            continue
+        results.append({
+            "name": p.get("displayName", {}).get("text", "Unknown"),
+            "facility": p.get("formattedAddress", ""),
+            "distance_km": _haversine_km(patient_lat, patient_lng, lat, lng),
+            "is_specialist_match": False,
+        })
+    if not results:
+        return {"match_found": False,
+                "reason": f"No healthcare facilities within {radius_m / 1000:.1f} km."}
+    results.sort(key=lambda x: x["distance_km"])
+    return {
+        "disclaimer": ("These are general healthcare facilities, NOT verified "
+                       "specialists. Present them only as general options."),
+        "facilities": results[:k],
+    }
+
+
 if __name__ == "__main__":
     # Patient P001 is in Koramangala. Needs a real key + billing to run.
     out = find_providers("Cardiology", 12.9352, 77.6245, k=3)
-    for r in out:
-        print(r)
+    print(out)

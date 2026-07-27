@@ -108,16 +108,44 @@ def find_providers(specialty: str, patient_lat: float, patient_lng: float,
     return in_radius[:k]
 
 
+def find_general_facilities(patient_lat: float, patient_lng: float,
+                            k: int = 3, radius_m: int = 8000) -> dict:
+    """Nearest providers of ANY specialty — explicitly NOT specialist matches.
+
+    Only call this after find_providers has reported match_found=false and you
+    have told the user no specialist was found. Every item is labelled
+    is_specialist_match=false, and the payload carries a disclaimer, because a
+    prompt instruction alone was not enough to stop the model presenting these
+    as specialists.
+    """
+    scored = [
+        {**p, "distance_km": _haversine_km(patient_lat, patient_lng, p["lat"], p["lng"]),
+         "is_specialist_match": False}
+        for p in _PROVIDERS
+    ]
+    scored = [p for p in scored if p["distance_km"] * 1000 <= radius_m]
+    if not scored:
+        return {"match_found": False,
+                "reason": f"No facilities of any kind within {radius_m / 1000:.1f} km."}
+    scored.sort(key=lambda p: p["distance_km"])
+    return {
+        "disclaimer": ("These are general healthcare providers, NOT matches for "
+                       "the requested specialty. Present them only as general "
+                       "options, never as specialists."),
+        "facilities": scored[:k],
+    }
+
+
 # Swap to a REAL provider lookup by setting USE_REAL_PROVIDERS. This rebinds
 # find_providers to the real implementation (identical signature), so agent.py
 # and the registry below DON'T change — that's the interface lesson: the agent
 # can't tell the data source changed.
 _provider_mode = os.getenv("USE_REAL_PROVIDERS", "").lower()
 if _provider_mode in ("google", "1"):
-    from places import find_providers  # noqa: F811  (Google Places — needs key + billing)
+    from places import find_providers, find_general_facilities  # noqa: F811
     _BACKEND = "google-places"
 elif _provider_mode == "osm":
-    from osm import find_providers      # noqa: F811  (OpenStreetMap — free, no key)
+    from osm import find_providers, find_general_facilities      # noqa: F811
     _BACKEND = "openstreetmap"
 else:
     _BACKEND = "dummy-json"
@@ -127,6 +155,7 @@ print(f"[tools] find_providers backend: {_BACKEND}")
 TOOL_REGISTRY = {
     "get_patient_record": get_patient_record,
     "find_providers": find_providers,
+    "find_general_facilities": find_general_facilities,
 }
 
 
@@ -144,3 +173,5 @@ if __name__ == "__main__":
           find_providers("Dentistry", rec["lat"], rec["lng"]))
     print("Radius too small  ->",
           find_providers("Neurology", rec["lat"], rec["lng"], radius_m=2000))
+    print("Explicit fallback ->",
+          find_general_facilities(rec["lat"], rec["lng"], k=2))
