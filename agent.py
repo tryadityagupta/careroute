@@ -15,11 +15,75 @@ The model drives. We just execute what it asks for and hand back results.
 from tools import TOOL_REGISTRY
 from openai import OpenAI
 import os
+import re
 import json
 from dotenv import load_dotenv
 load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# ---------------------------------------------------------------------------
+# OBSERVABILITY + OUTPUT GUARD
+# Logging the tool CALL but not the RESULT made a real bug undiagnosable for
+# hours: we could see what the model asked for, never what it got back.
+# ---------------------------------------------------------------------------
+
+_LIST_ITEM = re.compile(r"^\s*\d+[.)]\s+\S", re.M)
+
+
+def _summarize(result) -> str:
+    """One-line summary of a tool result, for the step log."""
+    if isinstance(result, list):
+        def _one(r):
+            n = str(r.get("name", "?"))[:40]
+            via = r.get("matched_via")
+            return f"{n} [{via}]" if via else n
+        names = ", ".join(_one(r) for r in result[:5] if isinstance(r, dict))
+        return f"OK list[{len(result)}]: {names}"
+    if isinstance(result, dict):
+        if "error" in result:
+            return f"ERROR: {result['error']}"
+        if result.get("match_found") is False:
+            return f"MISS: {result.get('reason')}"
+        if "facilities" in result:
+            names = ", ".join(str(f.get("name", "?"))[:40]
+                              for f in result["facilities"][:5])
+            return f"FALLBACK[{len(result['facilities'])}]: {names}"
+    return f"OK: {str(result)[:120]}"
+
+
+def _names_in(result) -> set:
+    """Facility names present in a tool result, whatever its shape."""
+    items = []
+    if isinstance(result, list):
+        items = result
+    elif isinstance(result, dict) and isinstance(result.get("facilities"), list):
+        items = result["facilities"]
+    return {i["name"] for i in items if isinstance(i, dict) and i.get("name")}
+
+
+def _guard_answer(answer: str, confirmed: set, offered: set) -> str:
+    """Deterministic last line of defence.
+
+    The model has twice presented facilities as specialists that no tool
+    confirmed. Prompt rules did not hold and withholding names did not hold, so
+    this check runs in code: if the answer lists providers but no tool ever
+    returned a confirmed specialist match, the list cannot be trusted and is
+    replaced. Code beats prompt.
+    """
+    if not answer or not _LIST_ITEM.search(answer):
+        return answer                      # not a recommendation list
+    if confirmed:
+        return answer                      # a tool really did confirm matches
+    if offered:                            # only unlabelled fallbacks exist
+        return ("No verified specialist match was found nearby for this "
+                "condition.\n\n" + answer)
+    return ("No verified specialist match was found nearby for this condition, "
+            "so I can't recommend specific providers. Consider widening the "
+            "search area, or seeing a general physician who can refer you.\n\n"
+            "(The model attempted to list providers that no tool confirmed; "
+            "that response was withheld.)")
+
 
 # ---------------------------------------------------------------------------
 # 1) TOOL SCHEMAS
@@ -28,7 +92,6 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Note how the descriptions guide ordering ("Call this first / after") AND
 # recovery ("if no match, retry with a larger radius").
 # ---------------------------------------------------------------------------
-
 TOOLS = [
     {
         "type": "function",
@@ -113,6 +176,9 @@ Reason step by step:
 3. Use find_providers to get the nearest matching specialists.
 4. Give a short, clear recommendation naming the providers and their distances,
    and briefly note any relevant item from the patient's history.
+   If a provider matched only via its OSM speciality tag (matched_via =
+   "speciality_tag"), say what kind of facility it actually is — e.g. "a
+   multi-speciality clinic that lists psychiatry" — so the user can judge.
 
 Recovering when find_providers returns match_found=false:
 - Nothing matched within the radius: call find_providers again with a larger
@@ -151,6 +217,8 @@ def run_agent(user_request: str, max_steps: int = 8) -> str:
         },
     ]
 
+    confirmed, offered = set(), set()
+
     for step in range(max_steps):
         # Reason: ask the model what to do next, giving it the tools
         response = client.chat.completions.create(
@@ -163,7 +231,7 @@ def run_agent(user_request: str, max_steps: int = 8) -> str:
 
         # If the model did NOT request a tool, it's done thinking -> final answer.
         if not msg.tool_calls:
-            return msg.content
+            return _guard_answer(msg.content, confirmed, offered)
 
         # Otherwise, record the model's tool request in the conversation...
         messages.append(msg)
@@ -183,6 +251,13 @@ def run_agent(user_request: str, max_steps: int = 8) -> str:
             except Exception as e:
                 # Never let a tool crash take down the whole agent.
                 result = {"error": f"Tool {name} failed: {e}"}
+
+            print(f"          -> {_summarize(result)}")
+            if name == "find_providers" and isinstance(result, list):
+                confirmed |= _names_in(result)   # tool-confirmed specialists
+            else:
+                # everything else is unverified
+                offered |= _names_in(result)
 
             messages.append({
                 "role": "tool",

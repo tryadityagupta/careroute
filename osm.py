@@ -96,13 +96,42 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
             "distance_km": _haversine_km(patient_lat, patient_lng, lat, lng),
         }
         if stem:
-            speciality_tag = tags.get("healthcare:speciality", "").lower()
-            item["specialty_match"] = (stem in name.lower()
-                                       or stem in speciality_tag)
+            # Bengaluru OSM facilities often carry healthcare:speciality as a
+            # long semicolon list, sometimes batch-pasted across many POIs.
+            # Substring-matching the whole blob confirmed a DENTAL clinic for
+            # Psychiatry. So: match token-by-token, and RECORD THE EVIDENCE —
+            # matched_via + the raw tag — so no match is ever opaque again.
+            raw_tag = tags.get("healthcare:speciality", "")
+            tokens = [t.strip().lower()
+                      for t in raw_tag.split(";") if t.strip()]
+            if stem in name.lower():
+                item["specialty_match"] = True
+                item["matched_via"] = "name"
+            elif any(stem in t for t in tokens):
+                item["specialty_match"] = True
+                item["matched_via"] = "speciality_tag"
+                item["speciality_tag"] = raw_tag       # the evidence, verbatim
+                item["_tag_tokens"] = len(tokens)      # mega-list detector
+            else:
+                item["specialty_match"] = False
         out.append(item)
 
     out.sort(key=lambda r: r["distance_km"])
     return out, None
+
+
+def _dedupe(items):
+    """OSM stores big facilities as a node AND a way; the same name then eats
+    two result slots (NIMHANS showed up twice). Keep the nearest instance.
+    Unnamed facilities are left alone — collapsing distinct ones would lie."""
+    seen, out = set(), []
+    for f in items:                       # callers pass distance-sorted lists
+        key = f["name"].lower()
+        if key != "unnamed facility" and key in seen:
+            continue
+        seen.add(key)
+        out.append(f)
+    return out
 
 
 def find_providers(specialty: str, patient_lat: float, patient_lng: float,
@@ -119,9 +148,19 @@ def find_providers(specialty: str, patient_lat: float, patient_lng: float,
     if err:
         return err
 
-    matches = [f for f in facilities if f["specialty_match"]]
+    matches = _dedupe([f for f in facilities if f["specialty_match"]])
     if matches:
-        return matches[:k]
+        # Rank by evidence quality before distance: a specialty in the NAME
+        # beats a speciality tag, and a dedicated tag (few entries) beats a
+        # 20-specialty mega-list — which is how a dental clinic can "offer"
+        # psychiatry. Distance breaks ties.
+        matches.sort(key=lambda f: (f.get("matched_via") != "name",
+                                    f.get("_tag_tokens", 0),
+                                    f["distance_km"]))
+        top = matches[:k]
+        for f in top:
+            f.pop("_tag_tokens", None)
+        return top
 
     return {
         "match_found": False,
@@ -152,6 +191,7 @@ def find_general_facilities(patient_lat: float, patient_lng: float,
         return {"match_found": False,
                 "reason": f"No healthcare facilities at all within {radius_m / 1000:.1f} km."}
 
+    facilities = _dedupe(facilities)
     for f in facilities[:k]:
         f["is_specialist_match"] = False
     return {
