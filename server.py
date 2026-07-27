@@ -63,3 +63,11 @@ def care(req: CareRequest):
     )
     answer = run_agent(user_request)
     return {"answer": answer}
+
+
+CODE_VERSION = "2026-07-27-structured-miss"
+
+
+@app.get("/version")
+def version():
+    return {"version": CODE_VERSION, "backend": tools._BACKEND}
