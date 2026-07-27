@@ -81,6 +81,24 @@ TOOLS = [
         },
     },
 
+    {
+        "type": "function",
+        "function": {
+            "name": "find_general_facilities",
+            "description": "Nearest healthcare facilities of ANY type — these are NOT specialists. Only call this AFTER find_providers has returned match_found=false and you have exhausted your radius retries. Everything it returns must be presented as a general option, never as a specialist match.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_lat": {"type": "number", "description": "Patient latitude"},
+                    "patient_lng": {"type": "number", "description": "Patient longitude"},
+                    "k": {"type": "integer", "description": "How many facilities to return (default 3)"},
+                    "radius_m": {"type": "integer", "description": "Search radius in metres (default 8000)"},
+                },
+                "required": ["patient_lat", "patient_lng"],
+            },
+        },
+    },
+
 ]
 
 
@@ -97,14 +115,18 @@ Reason step by step:
    and briefly note any relevant item from the patient's history.
 
 Recovering when find_providers returns match_found=false:
-- If the reason is that nothing matched within the radius: call find_providers
-  again with a larger radius_m (double it, up to 30000). Retry at most twice.
-- If the reason is that the specialty doesn't exist in the directory: pick the
-  most clinically appropriate option from available_specialties and call
-  find_providers again.
-- If there is still no match after retrying: say so honestly, and offer the
-  nearest_general_facilities from the tool result as general options instead.
-  NEVER present a facility as a specialist match unless the tool confirmed it.
+- Nothing matched within the radius: call find_providers again with a larger
+  radius_m (double it, up to 30000). Retry at most twice.
+- The specialty does not exist in the directory: pick the most clinically
+  appropriate option from available_specialties and call find_providers again.
+- Still no match after retrying: your FIRST sentence must state plainly that no
+  matching specialist was found nearby. Only then may you call
+  find_general_facilities and offer its results as general, non-specialist
+  options, describing them exactly as the tool labels them.
+
+Hard rule: a facility is a specialist match ONLY if find_providers returned it
+in a success list. Never call anything else a specialist, and never invent a
+clinical justification for a facility whose specialty you do not know.
 
 Only use the tools provided. If a tool returns an error, explain the problem.
 """

@@ -132,3 +132,16 @@ python mocktest.py    # exercises the agent LOOP with a scripted fake model
   when it should?) and **observability** (LangSmith/Langfuse) to trace each tool
   call and log token usage per step
 - Return copies / immutable reads under concurrency; auth & PHI access controls
+
+## Note on the fallback path
+
+When no specialist matches, `find_providers` returns `match_found: false` with a
+**count** of nearby general facilities — never their names. Offering
+non-specialist options requires a deliberate call to `find_general_facilities`,
+whose results are labelled `is_specialist_match: false`.
+
+This is on purpose. An earlier version put the general facilities directly in
+the miss payload and told the model in the system prompt not to present them as
+specialists. It did anyway — a dental clinic was recommended for anxiety
+attacks, with an invented justification. Withholding the names makes the failure
+structural rather than advisory.
