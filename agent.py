@@ -25,7 +25,8 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # 1) TOOL SCHEMAS
 # We describe each tool to the model in the format it expects. The model reads
 # these descriptions to decide WHICH tool to call and WHAT arguments to pass.
-# Note how the descriptions guide ordering ("Call this first / after").
+# Note how the descriptions guide ordering ("Call this first / after") AND
+# recovery ("if no match, retry with a larger radius").
 # ---------------------------------------------------------------------------
 
 TOOLS = [
@@ -50,7 +51,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "find_providers",
-            "description": "Find the k nearest providers of a given medical specialty to the patient's location. Call this AFTER you know the patient's coordinates and have decided the specialty the condition requires.",
+            "description": "Find the k nearest providers of a given medical specialty to the patient's location. Call this AFTER you know the patient's coordinates and have decided the specialty the condition requires. If it returns match_found=false, follow the hint in the result: retry with a larger radius_m, or switch to one of the available_specialties.",
             "parameters":  {
                 "type": "object",
                 "properties": {
@@ -70,6 +71,10 @@ TOOLS = [
                         "type": "integer",
                         "description": "How many providers to return (default 3)"
                     },
+                    "radius_m": {
+                        "type": "integer",
+                        "description": "Search radius in metres (default 8000). If no match was found, double it on retry, up to a maximum of 30000."
+                    },
                 },
                 "required": ["specialty", "patient_lat", "patient_lng"],
             },
@@ -85,22 +90,33 @@ Given a patient and their complaint, your job is to recommend the nearest
 appropriate healthcare providers.
 
 Reason step by step:
-1. Decide which medical SPECIALTY the complaint requires (e. g. chest pain -> Cardiology).
+1. Decide which medical SPECIALTY the complaint requires (e.g. chest pain -> Cardiology).
 2. Use get_patient_record to fetch the patient's location and history.
 3. Use find_providers to get the nearest matching specialists.
 4. Give a short, clear recommendation naming the providers and their distances,
-    and briefly note any relevant item from the patient's history.
+   and briefly note any relevant item from the patient's history.
+
+Recovering when find_providers returns match_found=false:
+- If the reason is that nothing matched within the radius: call find_providers
+  again with a larger radius_m (double it, up to 30000). Retry at most twice.
+- If the reason is that the specialty doesn't exist in the directory: pick the
+  most clinically appropriate option from available_specialties and call
+  find_providers again.
+- If there is still no match after retrying: say so honestly, and offer the
+  nearest_general_facilities from the tool result as general options instead.
+  NEVER present a facility as a specialist match unless the tool confirmed it.
 
 Only use the tools provided. If a tool returns an error, explain the problem.
 """
 
 
-def run_agent(user_request: str, max_steps: int = 5) -> str:
+def run_agent(user_request: str, max_steps: int = 8) -> str:
     """
     Run the reason-act-observe loop until the model produces a final answer.
 
     max_steps is a safety cap so a misbehaving agent can't loop forever - an
-    important guardrail in any agentic system.
+    important guardrail in any agentic system. 8 gives headroom: the happy
+    path is 3 model calls, and up to two radius retries adds two more.
     """
     messages = [
         {
@@ -123,7 +139,7 @@ def run_agent(user_request: str, max_steps: int = 5) -> str:
 
         msg = response.choices[0].message
 
-        # If the model did NOT request a tool, it'd done thinking -> final answer.
+        # If the model did NOT request a tool, it's done thinking -> final answer.
         if not msg.tool_calls:
             return msg.content
 
