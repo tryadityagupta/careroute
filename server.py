@@ -5,42 +5,27 @@ You are the patient: describe symptoms, your browser shares your real location,
 the agent finds real nearby providers. The only synthetic piece is "the patient"
 (you), so the get_patient_record tool still demonstrates record retrieval.
 
-Run it:
+Run it (PowerShell):
+    $env:USE_REAL_PROVIDERS="osm"; uvicorn server:app --reload
+Run it (bash/zsh):
     USE_REAL_PROVIDERS=osm uvicorn server:app --reload
 Then open http://localhost:8000
 """
 
-
-from agent import run_agent
-import tools
-from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
-import os
+from pydantic import BaseModel
+import tools
+from agent import run_agent
 from dotenv import load_dotenv
-from osm import find_providers
-
-# Load OPENAI_API_KEY from .env BEFORE importing agent — agent.py builds the
-# OpenAI client at import time, so the key must be in the environment first.
-load_dotenv()
+load_dotenv()  # belt-and-braces; tools.py also loads .env before reading flags
 
 
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )
-
-
-class LocationRequest(BaseModel):
-    specialty: str
-    lat: float
-    lng: float
-
-
-@app.post("/api/find")
-def find(req: LocationRequest):
-    return find_providers(req.specialty, req.lat, req.lng)
 
 
 class CareRequest(BaseModel):
@@ -56,7 +41,7 @@ def home():
 
 # NOTE: this is a SYNC def, not async. run_agent makes blocking OpenAI calls,
 # so FastAPI runs this in a threadpool — that keeps the blocking call off the
-# event loop. (Same async lesson from your portfolio, applied the other way.)
+# event loop.
 @app.post("/care")
 def care(req: CareRequest):
     # Register the live user as a synthetic patient so get_patient_record works
