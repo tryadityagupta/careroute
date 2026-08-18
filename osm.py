@@ -24,15 +24,75 @@ healthcare:speciality=cardiology. Two bugs came out of that:
 Lesson: a prompt instruction is advisory; a data structure is enforced.
 """
 
-import requests
+import json
+import os
+import time
 from math import radians, sin, cos, sqrt, atan2
 
-_OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+import requests
+
+# Free public instances with GLOBAL coverage, from the OSM wiki's instance
+# table. NOTE: overpass.kumi.systems is just the OLD NAME of the
+# private.coffee instance — listing both meant two of our three "mirrors"
+# were the same servers, which is why both timed out together. VK Maps
+# (mail.ru) is a genuinely independent operator with no request limits, so
+# this list is now three separate organisations, not two.
+_OVERPASS_ENDPOINTS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+]
 
 # Guardrail: never trust model-supplied arguments blindly. Clamp the radius so
 # a hallucinated radius_m=9999999 can't hammer Overpass or blow the timeout.
 _MIN_RADIUS_M = 500
 _MAX_RADIUS_M = 30000
+
+# ---------------------------------------------------------------------------
+# LOCAL FETCH CACHE — because every public Overpass instance is a shared,
+# best-effort service that the wiki itself says "can often become overloaded",
+# and hospitals don't move week to week.
+#
+# The Overpass query below never mentions the specialty — filtering happens
+# client-side after the fetch — so ONE cached fetch per (~1 km location cell,
+# radius) serves EVERY specialty and every nearby user. distance_km is always
+# recomputed from the caller's exact coordinates, so ranking stays per-user
+# even on a cache hit. On a total mirror outage we serve an EXPIRED entry
+# rather than nothing ("stale-if-error"): week-old facility data beats telling
+# a patient the directory is unreachable. Correctness never depends on the
+# cache — only speed and availability do.
+# ---------------------------------------------------------------------------
+_CACHE_PATH = os.path.join(os.path.dirname(__file__), "data", "osm_cache.json")
+_CACHE_TTL_S = 7 * 24 * 3600
+
+
+def _cache_load() -> dict:
+    try:
+        with open(_CACHE_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _cache_save() -> None:
+    # Last-writer-wins under concurrency — fine for a single-user demo, the
+    # same caveat as the LIVE patient in server.py.
+    try:
+        os.makedirs(os.path.dirname(_CACHE_PATH), exist_ok=True)
+        with open(_CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(_CACHE, f)
+    except OSError as e:
+        print(f"[osm] cache write failed (non-fatal): {e}")
+
+
+def _cache_key(lat: float, lng: float, radius_m: int) -> str:
+    # 2 decimal places ~= 1.1 km grid cells: nearby users share a fetch. A
+    # user just across a cell boundary merely triggers one extra fetch —
+    # never a wrong answer, because distances are recomputed per caller.
+    return f"{lat:.2f},{lng:.2f},r{int(radius_m)}"
+
+
+_CACHE = _cache_load()
 
 
 def _haversine_km(lat1, lng1, lat2, lng2):
@@ -59,8 +119,8 @@ def _stem(specialty: str) -> str:
 def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
     """Shared Overpass fetch. Returns (facilities, error_or_None).
 
-    Both find_providers and find_general_facilities use this, so the query and
-    the distance math live in exactly one place.
+    Both find_providers and find_general_facilities use this, so the query,
+    the cache, and the distance math live in exactly one place.
     """
     query = f"""
     [out:json][timeout:25];
@@ -70,17 +130,65 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
     );
     out center tags;
     """
-    headers = {"User-Agent": "CareRoute-demo/1.0 (learning project)"}
-    try:
-        resp = requests.post(_OVERPASS_URL, data={"data": query},
-                             headers=headers, timeout=30)
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        return None, {"error": f"Overpass API call failed: {e}"}
+    key = _cache_key(patient_lat, patient_lng, radius_m)
+    hit = _CACHE.get(key)
+    now = time.time()
+    elements = None
+
+    if hit and now - hit["fetched_at"] < _CACHE_TTL_S:
+        elements = hit["elements"]                 # fresh cache: zero network
+    else:
+        headers = {"User-Agent": "CareRoute-demo/1.0 (learning project)"}
+        last_error = None
+        for url in _OVERPASS_ENDPOINTS:
+            try:
+                resp = requests.post(url, data={"data": query},
+                                     headers=headers, timeout=30)
+                resp.raise_for_status()
+                # .json() stays inside the try: a mirror answering 200 with an
+                # HTML error page falls through to the next mirror instead of
+                # crashing the tool.
+                elements = resp.json().get("elements", [])
+                _CACHE[key] = {"fetched_at": now, "elements": elements}
+                _cache_save()
+                break
+            except requests.RequestException as e:
+                last_error = e
+                # str(e) shows the actual reason — "429 Client Error" (rate
+                # limited, back off 30 s per the usage policy) vs "504 Server
+                # Error" (overloaded) vs "Read timed out" — so an outage is
+                # diagnosable from the log alone.
+                print(f"[osm] {url} failed: {str(e)[:90]}")
+
+        if elements is None and hit:
+            # stale-if-error: every mirror is down, but we have seen this
+            # area before. Serve the expired data and say so.
+            age_h = (now - hit["fetched_at"]) / 3600
+            print(
+                f"[osm] all mirrors down — serving cached data ({age_h:.0f} h old)")
+            elements = hit["elements"]
+
+        if elements is None:
+            # Every mirror is down AND this area was never fetched before.
+            # This is a TRANSPORT failure, and it is not the same fact as "no
+            # specialists nearby" — the model conflated the two and told a
+            # cardiac patient no cardiologist was found while one sat 3.3 km
+            # away. The payload says so in the data, because a prompt
+            # instruction is advisory and a data structure is enforced.
+            return None, {
+                "error": f"Provider directory unreachable: {last_error}",
+                "error_type": "upstream_unavailable",
+                "hint": ("The directory could not be reached, so nothing is known "
+                         "about which providers exist. Do NOT retry with a different "
+                         "radius_m — the radius is not the problem. Do NOT say that "
+                         "no specialists were found. Tell the user the provider "
+                         "directory is temporarily unreachable and to try again "
+                         "shortly; for urgent symptoms, direct them to emergency care."),
+            }
 
     stem = _stem(specialty) if specialty else None
     out = []
-    for el in resp.json().get("elements", []):
+    for el in elements:
         tags = el.get("tags", {})
         # node has lat/lon directly; way has it under 'center'.
         lat = el.get("lat") or el.get("center", {}).get("lat")
@@ -203,6 +311,8 @@ def find_general_facilities(patient_lat: float, patient_lng: float,
 
 if __name__ == "__main__":
     # Patient P001 is in Koramangala, Bengaluru. No key needed to run this.
+    # Running this once while a mirror is up also PRE-WARMS the cache, which
+    # makes the web demo outage-proof for this area for a week.
     print("HIT CASE:")
     print(find_providers("Cardiology", 12.9352, 77.6245, k=5))
     print("\nMISS CASE (count only — no names to misuse):")
