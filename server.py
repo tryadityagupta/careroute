@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import tools
 from agent import run_agent
+from agent_langgraph import run_agent
 from dotenv import load_dotenv
 load_dotenv()  # belt-and-braces; tools.py also loads .env before reading flags
 
@@ -65,7 +66,7 @@ def care(req: CareRequest):
     return {"answer": answer}
 
 
-CODE_VERSION = "2026-07-27-structured-miss"
+CODE_VERSION = "2026-08-18-langgraph-port"
 
 
 @app.get("/version")
