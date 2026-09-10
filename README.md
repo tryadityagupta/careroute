@@ -230,3 +230,144 @@ framing. Orchestration layer: the graph records `tool_errors` in state, and
 the guard prefixes any post-outage answer with "this is NOT a confirmed
 result". Same lesson as the fallback path: a prompt instruction is advisory;
 a data structure is enforced.
+## Deployment
+
+CareRoute runs as a single Docker container on **Azure Container Apps**. The container
+serves the FastAPI app (`server:app`) with uvicorn on port 8000, and Azure fronts it with
+public HTTPS ingress.
+
+### Architecture
+
+```
+Internet
+  │  HTTPS
+  ▼
+Azure Container Apps  ──►  CareRoute container
+                             ├── FastAPI        (serves index.html + /care)
+                             ├── LangGraph agent
+                             └── tools ──► OpenAI
+                                       └─► OpenStreetMap / Overpass
+```
+
+Supporting resources:
+
+| Resource | Purpose |
+|---|---|
+| Resource group | Groups everything below |
+| Container registry (ACR, Basic) | Stores the container image |
+| Container Apps environment | Hosts the app |
+| Container App (0.5 CPU, 1 GiB) | The running service |
+| Log Analytics workspace | Application and container logs |
+
+Secrets and config on the Container App:
+
+- **Secret** `OPENAI_API_KEY` — referenced by the container, never baked into the image
+- **Env var** `USE_REAL_PROVIDERS=osm` — switches provider lookup from the dummy backend to live OpenStreetMap
+
+### Prerequisites
+
+- Docker
+- Azure CLI, logged in (`az login`)
+- An OpenAI API key
+
+### Set your own values
+
+The commands below use these variables. Fill them in with your own names — they don't
+need to match anyone else's.
+
+```bash
+RG="<resource-group>"     # a group you create for this app
+LOCATION="<region>"       # e.g. southindia, eastus
+ACR="<registry-name>"     # globally unique, letters and numbers only
+ENVIRONMENT="<env-name>"  # Container Apps environment
+APP="<app-name>"          # your Container App
+IMAGE="careroute"         # image repo name inside the registry
+```
+
+### 1. Build and test locally
+
+```bash
+docker build -t careroute:local .
+docker run --rm -p 8000:8000 --env-file .env careroute:local
+# open http://localhost:8000
+```
+
+### 2. Create the resource group and registry
+
+```bash
+az group create --name "$RG" --location "$LOCATION"
+
+az acr create --resource-group "$RG" --name "$ACR" --sku Basic
+```
+
+### 3. Build the image in ACR
+
+```bash
+az acr build --registry "$ACR" --image "$IMAGE:v1" .
+```
+
+### 4. Create the Container Apps environment
+
+```bash
+az containerapp env create \
+  --name "$ENVIRONMENT" \
+  --resource-group "$RG" \
+  --location "$LOCATION"
+```
+
+### 5. Create the Container App
+
+```bash
+az containerapp create \
+  --name "$APP" \
+  --resource-group "$RG" \
+  --environment "$ENVIRONMENT" \
+  --image "$ACR.azurecr.io/$IMAGE:v1" \
+  --registry-server "$ACR.azurecr.io" \
+  --target-port 8000 \
+  --ingress external \
+  --cpu 0.5 --memory 1.0Gi \
+  --secrets openai-api-key=<YOUR_OPENAI_KEY> \
+  --env-vars OPENAI_API_KEY=secretref:openai-api-key USE_REAL_PROVIDERS=osm
+```
+
+> Pass `<YOUR_OPENAI_KEY>` at the command line — never commit the real key.
+> Azure also needs pull access to the registry; the portal wires this up automatically,
+> and via CLI you enable it with the ACR admin user or a managed identity.
+
+### 6. Verify
+
+```bash
+curl https://<your-app-url>/version
+# expect: {"version": "...", "backend": "openstreetmap"}
+```
+
+If `backend` comes back as `dummy-json`, the `USE_REAL_PROVIDERS=osm` env var is missing
+from the active revision — set it and roll a new revision (see below).
+
+### Redeploy a new version
+
+```bash
+az acr build --registry "$ACR" --image "$IMAGE:v2" .
+
+az containerapp update \
+  --name "$APP" \
+  --resource-group "$RG" \
+  --image "$ACR.azurecr.io/$IMAGE:v2"
+```
+
+Each update creates a new revision. In single-revision mode, traffic moves to the latest
+revision automatically.
+
+### Watching logs
+
+```bash
+az containerapp logs show \
+  --name "$APP" \
+  --resource-group "$RG" \
+  --follow
+```
+
+A healthy run shows `find_providers backend: openstreetmap`, the model calling
+`get_patient_record(...)` and `find_providers(...)`, any structured-output retry paths,
+and HTTP 200 responses.
