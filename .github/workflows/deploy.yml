@@ -1,0 +1,58 @@
+name: Deploy CareRoute to Azure
+
+on:
+  push:
+    branches: [main]      # every push to main triggers this
+  workflow_dispatch:      # ...and you can also run it by hand
+
+permissions:
+  id-token: write         # lets the job get the OIDC token for Azure login
+  contents: read
+
+env:
+  RESOURCE_GROUP: careroute-rg
+  ACR_NAME: carerouteacr
+  CONTAINER_APP: careroute-app
+  IMAGE_NAME: careroute
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests (the gate)
+        run: python test_agent_langgraph.py
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build the image in ACR, tagged with this commit
+        run: |
+          az acr build \
+            --registry ${{ env.ACR_NAME }} \
+            --image ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --image ${{ env.IMAGE_NAME }}:latest \
+            .
+
+      - name: Deploy the new image to Container Apps
+        run: |
+          az extension add --name containerapp --upgrade
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --set-env-vars GIT_SHA=${{ github.sha }}

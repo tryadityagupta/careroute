@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 from pydantic import BaseModel
 import tools
+import os
 from agent import run_agent
 from agent_langgraph import run_agent
 from dotenv import load_dotenv
@@ -67,8 +68,9 @@ def care(req: CareRequest):
 
 
 CODE_VERSION = "2026-08-18-langgraph-port"
+GIT_SHA = os.environ.get("GIT_SHA", "local-dev")
 
 
 @app.get("/version")
 def version():
-    return {"version": CODE_VERSION, "backend": tools._BACKEND}
+    return {"version": CODE_VERSION, "commit": GIT_SHA, "backend": tools._BACKEND}
