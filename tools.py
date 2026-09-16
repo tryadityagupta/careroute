@@ -16,6 +16,8 @@ from math import radians, sin, cos, sqrt, atan2
 
 from dotenv import load_dotenv
 
+from data_source import load_patients, load_providers
+
 # Load .env BEFORE reading any flags below. Previously USE_REAL_PROVIDERS was
 # read here at import time, BEFORE anything had called load_dotenv — so it only
 # worked as a real shell variable. Loading .env first means both work now.
@@ -24,11 +26,14 @@ load_dotenv()
 # Load the mock data once at import time (small files, fine to keep in memory).
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
-with open(os.path.join(_DATA_DIR, "providers.json"), encoding="utf-8") as f:
-    _PROVIDERS = json.load(f)
+# with open(os.path.join(_DATA_DIR, "providers.json"), encoding="utf-8") as f:
+#     _PROVIDERS = json.load(f)
 
-with open(os.path.join(_DATA_DIR, "patients.json"), encoding="utf-8") as f:
-    _PATIENTS = json.load(f)
+# with open(os.path.join(_DATA_DIR, "patients.json"), encoding="utf-8") as f:
+#     _PATIENTS = json.load(f)
+
+_PROVIDERS = load_providers()
+_PATIENTS = load_patients()
 
 
 def _haversine_km(lat1, lng1, lat2, lng2):

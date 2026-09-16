@@ -1,32 +1,2949 @@
 {
-    "P001": {
-        "patient_id": "P001",
-        "name": "Ramesh Kumar",
-        "age": 58,
-        "area": "Koramangala",
-        "lat": 12.9352,
-        "lng": 77.6245,
-        "history": [
-            "Hypertension",
-            "Type 2 Diabetes"
-        ],
-        "current_medications": [
-            "Amlodipine",
-            "Metformin"
-        ]
-    },
-    "P002": {
-        "patient_id": "P002",
-        "name": "Lakshmi Devi",
-        "age": 34,
-        "area": "Whitefield",
-        "lat": 12.9698,
-        "lng": 77.7500,
-        "history": [
-            "Asthma"
-        ],
-        "current_medications": [
-            "Salbutamol inhaler"
-        ]
-    }
+  "P001": {
+    "patient_id": "P001",
+    "synthea_id": "cc3eac4a-34a7-9a15-1522-8087135631b7",
+    "name": "Guillermo VonRueden",
+    "age": 48,
+    "gender": "M",
+    "area": "Whitefield",
+    "lat": 12.974632,
+    "lng": 77.753614,
+    "history": [
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Viral sinusitis (disorder)",
+      "Fractured dental filling (finding)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P002": {
+    "patient_id": "P002",
+    "synthea_id": "8b9df7af-24b3-66ee-afeb-2734ebcbd33c",
+    "name": "Jayne Bruen",
+    "age": 25,
+    "gender": "F",
+    "area": "Bellandur",
+    "lat": 12.922594,
+    "lng": 77.676403,
+    "history": [
+      "Normal pregnancy (finding)",
+      "Viral sinusitis (disorder)",
+      "Acute infective cystitis (disorder)",
+      "Miscarriage in second trimester (disorder)",
+      "Congenital uterine anomaly (disorder)",
+      "Past pregnancy history of miscarriage (situation)",
+      "Acute bronchitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Sprain (morphologic abnormality)",
+      "Sprain of ankle (disorder)",
+      "Gingivitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P003": {
+    "patient_id": "P003",
+    "synthea_id": "65cbad6a-eb9d-420e-9bab-b4f9c6aab7db",
+    "name": "Grisel Balistreri",
+    "age": 78,
+    "gender": "F",
+    "area": "Whitefield",
+    "lat": 12.960262,
+    "lng": 77.747249,
+    "history": [
+      "Past pregnancy history of miscarriage (situation)",
+      "Body mass index 30+ - obesity (finding)",
+      "Essential hypertension (disorder)",
+      "Osteoporosis (disorder)",
+      "Loss of teeth (disorder)",
+      "Viral sinusitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Ischemic heart disease (disorder)",
+      "Gingivitis (disorder)",
+      "Abnormal findings diagnostic imaging heart+coronary circulat (finding)",
+      "Acute bronchitis (disorder)",
+      "Primary dental caries (disorder)"
+    ],
+    "current_medications": [
+      "Clopidogrel 75 MG Oral Tablet",
+      "Simvastatin 20 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray",
+      "lisinopril 10 MG Oral Tablet",
+      "Alendronic acid 10 MG Oral Tablet",
+      "Galantamine 4 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P004": {
+    "patient_id": "P004",
+    "synthea_id": "9a3814bb-f5b0-05f3-928e-fe6640d5aa2a",
+    "name": "Esperanza Auer",
+    "age": 11,
+    "gender": "F",
+    "area": "Jayanagar",
+    "lat": 12.923008,
+    "lng": 77.594711,
+    "history": [
+      "Childhood asthma (disorder)",
+      "Acute bacterial sinusitis (disorder)",
+      "Chronic sinusitis (disorder)",
+      "Perennial allergic rhinitis with seasonal variation (disorder)",
+      "Streptococcal sore throat (disorder)",
+      "Primary dental caries (disorder)",
+      "Laceration - injury (disorder)",
+      "Laceration of thigh (disorder)",
+      "Acute bronchitis (disorder)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)"
+    ],
+    "current_medications": [
+      "cetirizine hydrochloride 5 MG Oral Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector",
+      "120 ACTUAT fluticasone propionate 0.044 MG/ACTUAT Metered Dose Inhaler",
+      "albuterol 0.83 MG/ML Inhalation Solution"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Mold (organism)",
+      "House dust mite (organism)",
+      "Animal dander (substance)",
+      "Grass pollen (substance)"
+    ]
+  },
+  "P005": {
+    "patient_id": "P005",
+    "synthea_id": "6a703775-432b-ba7d-d53a-c4d7bb0f5b58",
+    "name": "Arnulfo Boyer",
+    "age": 31,
+    "gender": "M",
+    "area": "Jayanagar",
+    "lat": 12.932567,
+    "lng": 77.588711,
+    "history": [
+      "Chronic sinusitis (disorder)",
+      "Streptococcal sore throat (disorder)",
+      "Gingivitis (disorder)",
+      "Acute bronchitis (disorder)",
+      "Gingival disease (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P006": {
+    "patient_id": "P006",
+    "synthea_id": "355cd402-8f45-353f-013f-ecb627e85106",
+    "name": "Josef Champlin",
+    "age": 40,
+    "gender": "M",
+    "area": "Koramangala",
+    "lat": 12.943976,
+    "lng": 77.627179,
+    "history": [
+      "Viral sinusitis (disorder)",
+      "Gingivitis (disorder)",
+      "Localized  primary osteoarthritis of the hand (disorder)",
+      "Fracture of mandible (disorder)"
+    ],
+    "current_medications": [
+      "Naproxen sodium 220 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P007": {
+    "patient_id": "P007",
+    "synthea_id": "c38b96b6-90ae-fabe-6f3c-cfd91d0fb21d",
+    "name": "Floretta Bechtelar",
+    "age": 8,
+    "gender": "F",
+    "area": "Malleshwaram",
+    "lat": 13.01346,
+    "lng": 77.573308,
+    "history": [
+      "Otitis media (disorder)",
+      "Acute viral pharyngitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P008": {
+    "patient_id": "P008",
+    "synthea_id": "239b0c86-371a-3080-fcd9-8379b296bc9a",
+    "name": "Breana Gutkowski",
+    "age": 31,
+    "gender": "F",
+    "area": "Bellandur",
+    "lat": 12.927987,
+    "lng": 77.673276,
+    "history": [
+      "Chronic sinusitis (disorder)",
+      "Acute infective cystitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Gingivitis (disorder)",
+      "Acute bronchitis (disorder)",
+      "Infection of tooth (disorder)",
+      "Laceration - injury (disorder)",
+      "Laceration of forearm (disorder)",
+      "Severe anxiety (panic) (finding)",
+      "Viral sinusitis (disorder)",
+      "Normal pregnancy (finding)"
+    ],
+    "current_medications": [
+      "Loratadine 5 MG Chewable Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)"
+    ]
+  },
+  "P009": {
+    "patient_id": "P009",
+    "synthea_id": "87f7ad7b-85f9-d26d-5a41-9933f4039331",
+    "name": "Susan Barrows",
+    "age": 57,
+    "gender": "F",
+    "area": "Bellandur",
+    "lat": 12.932398,
+    "lng": 77.67214,
+    "history": [
+      "Educated to high school level (finding)",
+      "Past pregnancy history of miscarriage (situation)",
+      "Body mass index 30+ - obesity (finding)",
+      "Impacted molars (disorder)",
+      "Appendicitis (disorder)",
+      "History of appendectomy (situation)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Suspected disease caused by Severe acute respiratory coronavirus 2 (situation)",
+      "Cough (finding)",
+      "Sore throat (finding)",
+      "Fatigue (finding)"
+    ],
+    "current_medications": [
+      "Hydrochlorothiazide 25 MG Oral Tablet",
+      "lisinopril 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P010": {
+    "patient_id": "P010",
+    "synthea_id": "f5749532-3295-ad01-d9b5-932c997e7a01",
+    "name": "Merlene Thompson",
+    "age": 54,
+    "gender": "F",
+    "area": "Koramangala",
+    "lat": 12.931925,
+    "lng": 77.619427,
+    "history": [
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Loss of teeth (disorder)",
+      "Viral sinusitis (disorder)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Primary dental caries (disorder)",
+      "Streptococcal sore throat (disorder)"
+    ],
+    "current_medications": [
+      "ferrous sulfate 325 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P011": {
+    "patient_id": "P011",
+    "synthea_id": "9389eec9-a5c3-a9e1-b675-93cd1f199532",
+    "name": "Stephine Christiansen",
+    "age": 25,
+    "gender": "F",
+    "area": "Marathahalli",
+    "lat": 12.956194,
+    "lng": 77.699602,
+    "history": [
+      "Severe anxiety (panic) (finding)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Primary dental caries (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Normal pregnancy (finding)",
+      "Miscarriage in first trimester (disorder)",
+      "Blighted ovum (disorder)",
+      "Past pregnancy history of miscarriage (situation)",
+      "Acute infective cystitis (disorder)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)"
+    ],
+    "current_medications": [
+      "72 HR Fentanyl 0.025 MG/HR Transdermal System",
+      "tramadol hydrochloride 50 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P012": {
+    "patient_id": "P012",
+    "synthea_id": "7132442e-b0b9-a886-e28d-f83700e5a3bd",
+    "name": "Carman Bergnaum",
+    "age": 37,
+    "gender": "F",
+    "area": "Rajajinagar",
+    "lat": 12.992559,
+    "lng": 77.552859,
+    "history": [
+      "Normal pregnancy (finding)",
+      "Miscarriage in second trimester (disorder)",
+      "Fetus with chromosomal abnormality (disorder)",
+      "Past pregnancy history of miscarriage (situation)",
+      "Essential hypertension (disorder)",
+      "Gingivitis (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Sinusitis (disorder)",
+      "Chronic sinusitis (disorder)",
+      "Acute bronchitis (disorder)",
+      "Sterilization requested (situation)",
+      "History of tubal ligation (situation)"
+    ],
+    "current_medications": [
+      "Hydrochlorothiazide 25 MG Oral Tablet",
+      "lisinopril 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P013": {
+    "patient_id": "P013",
+    "synthea_id": "4e71643c-f046-a74f-c2e2-4049efe17cd4",
+    "name": "Dena Padberg",
+    "age": 17,
+    "gender": "F",
+    "area": "Whitefield",
+    "lat": 12.970142,
+    "lng": 77.740072,
+    "history": [
+      "Viral sinusitis (disorder)",
+      "Primary dental caries (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Fracture of bone (disorder)",
+      "Fracture of forearm (disorder)",
+      "Gingivitis (disorder)",
+      "Severe anxiety (panic) (finding)",
+      "Acute infective cystitis (disorder)"
+    ],
+    "current_medications": [
+      "Meperidine Hydrochloride 50 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P014": {
+    "patient_id": "P014",
+    "synthea_id": "1be83f06-48ef-7bac-7097-b9e0644aeaf8",
+    "name": "Darren Rogahn",
+    "age": 46,
+    "gender": "M",
+    "area": "Marathahalli",
+    "lat": 12.94995,
+    "lng": 77.697477,
+    "history": [
+      "Educated to high school level (finding)",
+      "Asthma (disorder)",
+      "Loss of teeth (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Fracture of bone (disorder)",
+      "Fracture of clavicle (disorder)",
+      "Viral sinusitis (disorder)",
+      "Gingivitis (disorder)",
+      "Loose dental filling (finding)",
+      "Gingival disease (disorder)",
+      "Dental filling lost (finding)",
+      "Prediabetes (finding)"
+    ],
+    "current_medications": [
+      "ferrous sulfate 325 MG Oral Tablet",
+      "NDA020983 200 ACTUAT albuterol 0.09 MG/ACTUAT Metered Dose Inhaler",
+      "budesonide 0.25 MG/ML Inhalation Suspension",
+      "24 HR Metformin hydrochloride 500 MG Extended Release Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P015": {
+    "patient_id": "P015",
+    "synthea_id": "30ed72f3-240e-4973-a0b8-25369e1a9c1e",
+    "name": "Germán Collado",
+    "age": 8,
+    "gender": "M",
+    "area": "Koramangala",
+    "lat": 12.939302,
+    "lng": 77.619837,
+    "history": [
+      "Acute viral pharyngitis (disorder)",
+      "Otitis media (disorder)",
+      "Primary dental caries (disorder)",
+      "Viral sinusitis (disorder)",
+      "Laceration - injury (disorder)",
+      "Facial laceration (disorder)",
+      "Gingivitis (disorder)",
+      "Streptococcal sore throat (disorder)"
+    ],
+    "current_medications": [
+      "Penicillin V Potassium 250 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P016": {
+    "patient_id": "P016",
+    "synthea_id": "6095681c-dfc1-8f20-411c-42cef37189fa",
+    "name": "Ali Krajcik",
+    "age": 25,
+    "gender": "M",
+    "area": "Jayanagar",
+    "lat": 12.934663,
+    "lng": 77.593446,
+    "history": [
+      "Acute viral pharyngitis (disorder)",
+      "Acute bronchitis (disorder)",
+      "Gingivitis (disorder)",
+      "Laceration - injury (disorder)",
+      "Facial laceration (disorder)",
+      "Educated to high school level (finding)",
+      "Primary dental caries (disorder)",
+      "Laceration of foot (disorder)",
+      "Streptococcal sore throat (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P017": {
+    "patient_id": "P017",
+    "synthea_id": "37549f60-b5a3-69cd-dea6-5a71c4bc23cf",
+    "name": "Alexandra Mosciski",
+    "age": 45,
+    "gender": "F",
+    "area": "Rajajinagar",
+    "lat": 12.993238,
+    "lng": 77.564321,
+    "history": [
+      "Past pregnancy history of miscarriage (situation)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Gingivitis (disorder)",
+      "Viral sinusitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Body mass index 30+ - obesity (finding)"
+    ],
+    "current_medications": [
+      "Hydrocortisone 10 MG/ML Topical Cream",
+      "Fexofenadine hydrochloride 60 MG Oral Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector",
+      "{28 (norethindrone 0.35 MG Oral Tablet) } Pack"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)"
+    ]
+  },
+  "P018": {
+    "patient_id": "P018",
+    "synthea_id": "06476266-59b1-ded7-4138-3c7543fd4981",
+    "name": "Armand McGlynn",
+    "age": 46,
+    "gender": "M",
+    "area": "Whitefield",
+    "lat": 12.971713,
+    "lng": 77.748379,
+    "history": [
+      "Educated to high school level (finding)",
+      "Body mass index 40+ - severely obese (finding)",
+      "Body mass index 30+ - obesity (finding)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Chronic neck pain (finding)",
+      "Viral sinusitis (disorder)",
+      "Gingivitis (disorder)",
+      "Acute bronchitis (disorder)",
+      "Injury of neck (disorder)",
+      "Whiplash injury to neck (disorder)",
+      "Infection of tooth (disorder)"
+    ],
+    "current_medications": [
+      "diphenhydrAMINE Hydrochloride 25 MG Oral Tablet",
+      "Acetaminophen 300 MG / Codeine Phosphate 15 MG Oral Tablet",
+      "72 HR Fentanyl 0.025 MG/HR Transdermal System"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)"
+    ]
+  },
+  "P019": {
+    "patient_id": "P019",
+    "synthea_id": "09c573e2-a45d-aa5e-6a17-3c682155e6e3",
+    "name": "Titus Langosh",
+    "age": 18,
+    "gender": "M",
+    "area": "Bellandur",
+    "lat": 12.918328,
+    "lng": 77.667326,
+    "history": [
+      "Fracture of bone (disorder)",
+      "Fracture of ankle (disorder)",
+      "Viral sinusitis (disorder)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Primary dental caries (disorder)",
+      "Acute bronchitis (disorder)",
+      "Fractured dental filling (finding)",
+      "Acute viral pharyngitis (disorder)",
+      "Educated to high school level (finding)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P020": {
+    "patient_id": "P020",
+    "synthea_id": "8c5b83b2-737e-46cf-953b-414e07ed78e7",
+    "name": "Raphael McLaughlin",
+    "age": 52,
+    "gender": "M",
+    "area": "Electronic City",
+    "lat": 12.840124,
+    "lng": 77.665713,
+    "history": [
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Viral sinusitis (disorder)",
+      "Fractured dental filling (finding)",
+      "Injury of tendon of the rotator cuff of shoulder (disorder)",
+      "Gingivitis (disorder)",
+      "Infection of tooth (disorder)",
+      "Alveolitis of jaw (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P021": {
+    "patient_id": "P021",
+    "synthea_id": "b50c66af-4d1c-7987-03d7-e5b65fdf880f",
+    "name": "Grady Davis",
+    "age": 45,
+    "gender": "M",
+    "area": "BTM Layout",
+    "lat": 12.911224,
+    "lng": 77.603446,
+    "history": [
+      "Loss of teeth (disorder)",
+      "Chronic sinusitis (disorder)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Chronic neck pain (finding)",
+      "Body mass index 30+ - obesity (finding)",
+      "Gingival disease (disorder)",
+      "Infection of tooth (disorder)",
+      "Dental filling lost (finding)",
+      "Acute viral pharyngitis (disorder)",
+      "Gingivitis (disorder)"
+    ],
+    "current_medications": [
+      "Ibuprofen 400 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P022": {
+    "patient_id": "P022",
+    "synthea_id": "cbd1dd48-89c3-3fdb-434e-3f0802738abf",
+    "name": "Angelina West",
+    "age": 37,
+    "gender": "F",
+    "area": "JP Nagar",
+    "lat": 12.909478,
+    "lng": 77.587198,
+    "history": [
+      "Sepsis (disorder)",
+      "Past pregnancy history of miscarriage (situation)",
+      "Gingival disease (disorder)",
+      "Otitis media (disorder)",
+      "Normal pregnancy (finding)",
+      "Miscarriage in first trimester (disorder)",
+      "Blighted ovum (disorder)",
+      "Pulmonary emphysema (disorder)",
+      "Acute bronchitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Gingivitis (disorder)",
+      "Sterilization requested (situation)"
+    ],
+    "current_medications": [
+      "Vitamin B12 5 MG/ML Injectable Solution",
+      "albuterol 5 MG/ML Inhalation Solution",
+      "60 ACTUAT Fluticasone propionate 0.25 MG/ACTUAT / salmeterol 0.05 MG/ACTUAT Dry Powder Inhaler"
+    ],
+    "allergies": []
+  },
+  "P023": {
+    "patient_id": "P023",
+    "synthea_id": "3c0e60c4-176e-2c4c-3b85-b46be390cf5e",
+    "name": "Bebe Simonis",
+    "age": 61,
+    "gender": "F",
+    "area": "Koramangala",
+    "lat": 12.936792,
+    "lng": 77.617949,
+    "history": [
+      "Loss of teeth (disorder)",
+      "Educated to high school level (finding)",
+      "Chronic pain (finding)",
+      "Past pregnancy history of miscarriage (situation)",
+      "Osteoarthritis of knee (disorder)",
+      "Hyperlipidemia (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Acute viral pharyngitis (disorder)",
+      "Essential hypertension (disorder)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Laceration - injury (disorder)"
+    ],
+    "current_medications": [
+      "Naproxen sodium 220 MG Oral Tablet",
+      "Clopidogrel 75 MG Oral Tablet",
+      "Simvastatin 20 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray",
+      "Hydrochlorothiazide 25 MG Oral Tablet",
+      "lisinopril 10 MG Oral Tablet",
+      "amLODIPine 2.5 MG Oral Tablet",
+      "Simvastatin 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P024": {
+    "patient_id": "P024",
+    "synthea_id": "83093df7-a1e4-b827-72e6-c6d604fd7748",
+    "name": "Byron Emard",
+    "age": 16,
+    "gender": "M",
+    "area": "Bellandur",
+    "lat": 12.923464,
+    "lng": 77.684575,
+    "history": [
+      "Streptococcal sore throat (disorder)",
+      "Acute bronchitis (disorder)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Viral sinusitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P025": {
+    "patient_id": "P025",
+    "synthea_id": "3a9c6df2-621a-6239-0760-e58544d252f6",
+    "name": "Gayle Zboncak",
+    "age": 3,
+    "gender": "M",
+    "area": "Marathahalli",
+    "lat": 12.963226,
+    "lng": 77.707016,
+    "history": [
+      "Acute allergic reaction (disorder)",
+      "Atopic dermatitis (disorder)",
+      "Laceration - injury (disorder)",
+      "Laceration of thigh (disorder)",
+      "Otitis media (disorder)"
+    ],
+    "current_medications": [
+      "cetirizine hydrochloride 5 MG Oral Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Latex (substance)",
+      "Bee venom (substance)",
+      "Mold (organism)",
+      "House dust mite (organism)"
+    ]
+  },
+  "P026": {
+    "patient_id": "P026",
+    "synthea_id": "45f3a7b6-d706-f174-d043-16814aa127ed",
+    "name": "Chad Jenkins",
+    "age": 7,
+    "gender": "M",
+    "area": "HSR Layout",
+    "lat": 12.914902,
+    "lng": 77.634301,
+    "history": [
+      "Acute bronchitis (disorder)",
+      "Otitis media (disorder)",
+      "Seasonal allergic rhinitis (disorder)"
+    ],
+    "current_medications": [
+      "Fexofenadine hydrochloride 30 MG Oral Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Mold (organism)",
+      "Aspirin",
+      "Penicillin V",
+      "Shellfish (substance)"
+    ]
+  },
+  "P027": {
+    "patient_id": "P027",
+    "synthea_id": "a45aa142-d1e9-d944-f2c7-05015c90762d",
+    "name": "Zachariah Morar",
+    "age": 62,
+    "gender": "M",
+    "area": "Malleshwaram",
+    "lat": 12.998684,
+    "lng": 77.558527,
+    "history": [
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Ischemic heart disease (disorder)",
+      "Abnormal findings diagnostic imaging heart+coronary circulat (finding)",
+      "Sleep disorder (disorder)",
+      "Obstructive sleep apnea syndrome (disorder)",
+      "Gingivitis (disorder)",
+      "Hyperlipidemia (disorder)",
+      "Viral sinusitis (disorder)",
+      "Streptococcal sore throat (disorder)",
+      "Polyp of colon (disorder)",
+      "Severe anxiety (panic) (finding)"
+    ],
+    "current_medications": [
+      "Clopidogrel 75 MG Oral Tablet",
+      "Simvastatin 20 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray",
+      "Simvastatin 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P028": {
+    "patient_id": "P028",
+    "synthea_id": "7af6b271-f16d-21e1-882a-7bff71005a7b",
+    "name": "Benedict Gibson",
+    "age": 65,
+    "gender": "M",
+    "area": "Malleshwaram",
+    "lat": 12.997495,
+    "lng": 77.558544,
+    "history": [
+      "Body mass index 30+ - obesity (finding)",
+      "Essential hypertension (disorder)",
+      "Metabolic syndrome X (disorder)",
+      "Diabetes mellitus type 2 (disorder)",
+      "Anemia (disorder)",
+      "Hyperglycemia (disorder)",
+      "Hypertriglyceridemia (disorder)",
+      "Neuropathy due to type 2 diabetes mellitus (disorder)",
+      "Nonproliferative diabetic retinopathy due to type II diabetes mellitus",
+      "Severe anxiety (panic) (finding)",
+      "Viral sinusitis (disorder)",
+      "Acute viral pharyngitis (disorder)"
+    ],
+    "current_medications": [
+      "ferrous sulfate 325 MG Oral Tablet",
+      "Clopidogrel 75 MG Oral Tablet",
+      "Simvastatin 20 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray",
+      "24 HR Metformin hydrochloride 500 MG Extended Release Oral Tablet",
+      "lisinopril 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P029": {
+    "patient_id": "P029",
+    "synthea_id": "a406f356-c8b4-54ad-e79c-54a5e15ffc19",
+    "name": "Brock Lockman",
+    "age": 34,
+    "gender": "M",
+    "area": "Bellandur",
+    "lat": 12.931573,
+    "lng": 77.668001,
+    "history": [
+      "Laceration - injury (disorder)",
+      "Laceration of hand (disorder)",
+      "Acute bacterial sinusitis (disorder)",
+      "Chronic sinusitis (disorder)",
+      "Acute viral pharyngitis (disorder)"
+    ],
+    "current_medications": [
+      "Loratadine 5 MG Chewable Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Mold (organism)",
+      "House dust mite (organism)",
+      "Animal dander (substance)",
+      "Grass pollen (substance)"
+    ]
+  },
+  "P030": {
+    "patient_id": "P030",
+    "synthea_id": "f30304ab-8e45-1cbd-9833-cadf568373b4",
+    "name": "Elodia Waters",
+    "age": 11,
+    "gender": "F",
+    "area": "Bellandur",
+    "lat": 12.921492,
+    "lng": 77.673661,
+    "history": [
+      "Streptococcal sore throat (disorder)",
+      "Otitis media (disorder)",
+      "Viral sinusitis (disorder)",
+      "Sprain (morphologic abnormality)",
+      "Sprain of ankle (disorder)",
+      "Gingivitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P031": {
+    "patient_id": "P031",
+    "synthea_id": "fb56f051-a2cd-ac10-dcb0-e0738295fc1f",
+    "name": "Nada Keeling",
+    "age": 58,
+    "gender": "F",
+    "area": "JP Nagar",
+    "lat": 12.899201,
+    "lng": 77.579131,
+    "history": [
+      "Chronic sinusitis (disorder)",
+      "Fracture of bone (disorder)",
+      "Fracture subluxation of wrist (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Gingivitis (disorder)",
+      "Primary dental caries (disorder)",
+      "Normal pregnancy (finding)",
+      "Acute bronchitis (disorder)",
+      "Chronic congestive heart failure (disorder)",
+      "Acute infective cystitis (disorder)"
+    ],
+    "current_medications": [
+      "{7 (ethinyl estradiol 0.035 MG / norgestimate 0.18 MG Oral Tablet) / 7 (ethinyl estradiol 0.035 MG / norgestimate 0.215 MG Oral Tablet) / 7 (ethinyl estradiol 0.035 MG / norgestimate 0.25 MG Oral Tablet) / 7 (inert ingredients 1 MG Oral Tablet) } Pack",
+      "carvedilol 25 MG Oral Tablet",
+      "Furosemide 40 MG Oral Tablet",
+      "losartan potassium 50 MG Oral Tablet",
+      "lisinopril 20 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P032": {
+    "patient_id": "P032",
+    "synthea_id": "d21f2794-014b-c66b-3688-888382ab7434",
+    "name": "Theressa Carroll",
+    "age": 46,
+    "gender": "F",
+    "area": "Malleshwaram",
+    "lat": 13.003357,
+    "lng": 77.565183,
+    "history": [
+      "Recurrent urinary tract infection (disorder)",
+      "History of tubal ligation (situation)",
+      "Chronic pain (finding)",
+      "Chronic neck pain (finding)",
+      "Body mass index 30+ - obesity (finding)",
+      "Gingivitis (disorder)",
+      "Leaking dental filling (finding)",
+      "Dental filling lost (finding)",
+      "Acute viral pharyngitis (disorder)",
+      "Viral sinusitis (disorder)",
+      "Gingival disease (disorder)",
+      "Primary dental caries (disorder)"
+    ],
+    "current_medications": [
+      "Acetaminophen 325 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P033": {
+    "patient_id": "P033",
+    "synthea_id": "3368f8e7-5e00-7794-1e39-f65cb954d43d",
+    "name": "Matilda Kihn",
+    "age": 58,
+    "gender": "F",
+    "area": "Marathahalli",
+    "lat": 12.96715,
+    "lng": 77.700637,
+    "history": [
+      "History of tubal ligation (situation)",
+      "Essential hypertension (disorder)",
+      "Chronic pain (finding)",
+      "Chronic neck pain (finding)",
+      "Gingivitis (disorder)",
+      "Viral sinusitis (disorder)",
+      "Dental filling lost (finding)"
+    ],
+    "current_medications": [
+      "Acetaminophen 325 MG Oral Tablet",
+      "amLODIPine 2.5 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P034": {
+    "patient_id": "P034",
+    "synthea_id": "029c95e2-d252-d8d3-3626-7f347182d6d7",
+    "name": "Clemencia Gaylord",
+    "age": 53,
+    "gender": "F",
+    "area": "JP Nagar",
+    "lat": 12.90376,
+    "lng": 77.579385,
+    "history": [
+      "Past pregnancy history of miscarriage (situation)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Chronic pain (finding)",
+      "Chronic neck pain (finding)",
+      "Body mass index 30+ - obesity (finding)",
+      "Viral sinusitis (disorder)",
+      "Gingivitis (disorder)",
+      "Normal pregnancy (finding)",
+      "Miscarriage in first trimester (disorder)",
+      "Complete miscarriage (disorder)",
+      "Gingival disease (disorder)"
+    ],
+    "current_medications": [
+      "Naproxen sodium 220 MG Oral Tablet",
+      "Ibuprofen 400 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P035": {
+    "patient_id": "P035",
+    "synthea_id": "e34a6a5e-1d77-508d-8be3-8816e9df8046",
+    "name": "Magali Abbott",
+    "age": 22,
+    "gender": "F",
+    "area": "Bellandur",
+    "lat": 12.928356,
+    "lng": 77.675886,
+    "history": [
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Severe anxiety (panic) (finding)",
+      "Normal pregnancy (finding)",
+      "Suspected disease caused by Severe acute respiratory coronavirus 2 (situation)",
+      "Cough (finding)",
+      "Sputum finding (finding)",
+      "Dyspnea (finding)",
+      "Wheezing (finding)",
+      "Fever (finding)",
+      "Loss of taste (finding)",
+      "Acute infective cystitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P036": {
+    "patient_id": "P036",
+    "synthea_id": "a6d0791e-4c15-58e6-c30a-ec25e285ace9",
+    "name": "Dallas Graham",
+    "age": 2,
+    "gender": "M",
+    "area": "Rajajinagar",
+    "lat": 12.991023,
+    "lng": 77.547667,
+    "history": [
+      "Acute bronchitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P037": {
+    "patient_id": "P037",
+    "synthea_id": "4af53267-820e-7687-87a4-f6716ef64a2e",
+    "name": "Stephanie Zemlak",
+    "age": 11,
+    "gender": "F",
+    "area": "JP Nagar",
+    "lat": 12.906643,
+    "lng": 77.591251,
+    "history": [
+      "Fracture of bone (disorder)",
+      "Fracture of clavicle (disorder)",
+      "Otitis media (disorder)",
+      "Laceration - injury (disorder)",
+      "Laceration of forearm (disorder)",
+      "Acute bronchitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Gingivitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P038": {
+    "patient_id": "P038",
+    "synthea_id": "1d63466e-0cfd-eb12-77aa-d153393355e5",
+    "name": "Rick Kulas",
+    "age": 71,
+    "gender": "M",
+    "area": "Bellandur",
+    "lat": 12.930446,
+    "lng": 77.676336,
+    "history": [
+      "Body mass index 30+ - obesity (finding)",
+      "Hyperlipidemia (disorder)",
+      "Polyp of colon (disorder)",
+      "Recurrent rectal polyp (disorder)",
+      "Anemia (disorder)",
+      "Osteoarthritis of knee (disorder)",
+      "Ischemic heart disease (disorder)",
+      "Abnormal findings diagnostic imaging heart+coronary circulat (finding)",
+      "Concussion injury of brain (disorder)",
+      "Concussion with loss of consciousness (disorder)",
+      "Acute bacterial sinusitis (disorder)",
+      "Chronic sinusitis (disorder)"
+    ],
+    "current_medications": [
+      "Naproxen sodium 220 MG Oral Tablet",
+      "Clopidogrel 75 MG Oral Tablet",
+      "Simvastatin 20 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray",
+      "Simvastatin 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P039": {
+    "patient_id": "P039",
+    "synthea_id": "355a4d50-2628-aa65-c336-deacf4d606fb",
+    "name": "Emmanuel Considine",
+    "age": 69,
+    "gender": "M",
+    "area": "Malleshwaram",
+    "lat": 13.010904,
+    "lng": 77.563323,
+    "history": [
+      "Cerebral palsy (disorder)",
+      "Spasticity (finding)",
+      "Osteoporosis (disorder)",
+      "Gastroesophageal reflux disease (disorder)",
+      "Excessive salivation (disorder)",
+      "Unable to swallow saliva (finding)",
+      "Localized  primary osteoarthritis of the hand (disorder)",
+      "Acute ST segment elevation myocardial infarction (disorder)",
+      "History of myocardial infarction (situation)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Diabetes mellitus type 2 (disorder)"
+    ],
+    "current_medications": [
+      "Naproxen sodium 220 MG Oral Tablet",
+      "aspirin 81 MG Oral Tablet",
+      "24 HR metoprolol succinate 50 MG Extended Release Oral Tablet",
+      "atorvastatin 20 MG Oral Tablet",
+      "lisinopril 10 MG Oral Tablet",
+      "Clopidogrel 75 MG Oral Tablet",
+      "Simvastatin 20 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray",
+      "insulin isophane human 70 UNT/ML / insulin regular human 30 UNT/ML Injectable Suspension"
+    ],
+    "allergies": []
+  },
+  "P040": {
+    "patient_id": "P040",
+    "synthea_id": "f6745f8a-8107-443e-8946-3e6329d20408",
+    "name": "Shaun Cormier",
+    "age": 73,
+    "gender": "M",
+    "area": "Whitefield",
+    "lat": 12.965963,
+    "lng": 77.75877,
+    "history": [
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Localized  primary osteoarthritis of the hand (disorder)",
+      "Preinfarction syndrome (disorder)",
+      "History of myocardial infarction (situation)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Hyperlipidemia (disorder)",
+      "Gingivitis (disorder)",
+      "Otitis media (disorder)",
+      "Acute bronchitis (disorder)"
+    ],
+    "current_medications": [
+      "diphenhydrAMINE Hydrochloride 25 MG Oral Tablet",
+      "Vitamin B12 5 MG/ML Injectable Solution",
+      "aspirin 81 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "rosuvastatin calcium 10 MG Oral Tablet",
+      "losartan potassium 50 MG Oral Tablet",
+      "prasugrel 10 MG Oral Tablet",
+      "Simvastatin 10 MG Oral Tablet"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Mold (organism)",
+      "Sulfamethoxazole / Trimethoprim"
+    ]
+  },
+  "P041": {
+    "patient_id": "P041",
+    "synthea_id": "e170fdcd-8830-89c4-94b2-aaf7f35ca9c5",
+    "name": "Christiana O'Kon",
+    "age": 35,
+    "gender": "F",
+    "area": "Jayanagar",
+    "lat": 12.928083,
+    "lng": 77.600341,
+    "history": [
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Normal pregnancy (finding)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Viral sinusitis (disorder)"
+    ],
+    "current_medications": [
+      "ferrous sulfate 325 MG Oral Tablet",
+      "Vitamin B12 5 MG/ML Injectable Solution",
+      "{5 (dienogest 2 MG / estradiol valerate 2 MG Oral Tablet) / 17 (dienogest 3 MG / estradiol valerate 2 MG Oral Tablet) / 2 (estradiol valerate 1 MG Oral Tablet) / 2 (estradiol valerate 3 MG Oral Tablet) / 2 (inert ingredients 1 MG Oral Tablet) } Pack"
+    ],
+    "allergies": []
+  },
+  "P042": {
+    "patient_id": "P042",
+    "synthea_id": "d21fc5fa-6dc5-8058-1d11-5fd631086b72",
+    "name": "Luke Hoeger",
+    "age": 20,
+    "gender": "M",
+    "area": "Bellandur",
+    "lat": 12.919487,
+    "lng": 77.681678,
+    "history": [
+      "Gingivitis (disorder)",
+      "Laceration - injury (disorder)",
+      "Facial laceration (disorder)",
+      "Viral sinusitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Acute bronchitis (disorder)",
+      "Gingival disease (disorder)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Educated to high school level (finding)"
+    ],
+    "current_medications": [
+      "Ibuprofen 400 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P043": {
+    "patient_id": "P043",
+    "synthea_id": "2e9a9dab-f5b6-8960-d3ce-7834bb5e7344",
+    "name": "Mario VonRueden",
+    "age": 36,
+    "gender": "F",
+    "area": "Malleshwaram",
+    "lat": 13.00434,
+    "lng": 77.572691,
+    "history": [
+      "Asthma (disorder)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Past pregnancy history of miscarriage (situation)",
+      "Normal pregnancy (finding)",
+      "Leaking dental filling (finding)",
+      "Body mass index 30+ - obesity (finding)",
+      "Gingivitis (disorder)",
+      "Viral sinusitis (disorder)"
+    ],
+    "current_medications": [
+      "{21 (ethinyl estradiol 0.03 MG / levonorgestrel 0.15 MG Oral Tablet) / 7 (inert ingredients 1 MG Oral Tablet) } Pack",
+      "budesonide 0.25 MG/ML Inhalation Suspension",
+      "albuterol 0.83 MG/ML Inhalation Solution"
+    ],
+    "allergies": []
+  },
+  "P044": {
+    "patient_id": "P044",
+    "synthea_id": "00bcbfc6-c7b9-bd0e-3d95-071f9fba6321",
+    "name": "Jesica Cormier",
+    "age": 45,
+    "gender": "F",
+    "area": "Bellandur",
+    "lat": 12.923657,
+    "lng": 77.67051,
+    "history": [
+      "Educated to high school level (finding)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Essential hypertension (disorder)",
+      "Normal pregnancy (finding)",
+      "Acute viral pharyngitis (disorder)",
+      "Eclampsia in pregnancy (disorder)",
+      "Streptococcal sore throat (disorder)",
+      "Viral sinusitis (disorder)",
+      "Fractured dental filling (finding)",
+      "Miscarriage in first trimester (disorder)",
+      "Complete miscarriage (disorder)"
+    ],
+    "current_medications": [
+      "{5 (dienogest 2 MG / estradiol valerate 2 MG Oral Tablet) / 17 (dienogest 3 MG / estradiol valerate 2 MG Oral Tablet) / 2 (estradiol valerate 1 MG Oral Tablet) / 2 (estradiol valerate 3 MG Oral Tablet) / 2 (inert ingredients 1 MG Oral Tablet) } Pack",
+      "Hydrochlorothiazide 25 MG Oral Tablet",
+      "lisinopril 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P045": {
+    "patient_id": "P045",
+    "synthea_id": "0b786670-17af-32e1-b2d2-f77c33874b30",
+    "name": "Angel Mraz",
+    "age": 62,
+    "gender": "M",
+    "area": "Electronic City",
+    "lat": 12.853697,
+    "lng": 77.667542,
+    "history": [
+      "Serving in military service (finding)",
+      "Acquired immune deficiency syndrome (disorder)",
+      "Essential hypertension (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Chronic kidney disease stage 1 (disorder)",
+      "Disorder of kidney due to diabetes mellitus (disorder)",
+      "Chronic kidney disease stage 2 (disorder)",
+      "Microalbuminuria due to type 2 diabetes mellitus (disorder)",
+      "Dental filling lost (finding)",
+      "Acute viral pharyngitis (disorder)",
+      "Gingivitis (disorder)",
+      "Sprain (morphologic abnormality)"
+    ],
+    "current_medications": [
+      "Hydrochlorothiazide 25 MG Oral Tablet",
+      "cobicistat 150 MG / elvitegravir 150 MG / emtricitabine 200 MG / tenofovir disoproxil fumarate 300 MG Oral Tablet",
+      "amLODIPine 2.5 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P046": {
+    "patient_id": "P046",
+    "synthea_id": "2211f478-b7b4-7711-16cf-84ffb52b9d2b",
+    "name": "Francine Hyatt",
+    "age": 41,
+    "gender": "F",
+    "area": "Jayanagar",
+    "lat": 12.918709,
+    "lng": 77.585635,
+    "history": [
+      "Female infertility due to cystic fibrosis (disorder)",
+      "Cystic fibrosis (disorder)",
+      "Anemia (disorder)",
+      "Acute respiratory failure (disorder)",
+      "Infection caused by Staphylococcus aureus (disorder)",
+      "Diabetes mellitus due to cystic fibrosis (disorder)",
+      "Diabetes mellitus type 2 (disorder)",
+      "Loss of teeth (disorder)",
+      "Hypertriglyceridemia (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Hyperglycemia (disorder)",
+      "Metabolic syndrome X (disorder)"
+    ],
+    "current_medications": [
+      "{28 (norethindrone 0.35 MG Oral Tablet) } Pack",
+      "insulin isophane human 70 UNT/ML / insulin regular human 30 UNT/ML Injectable Suspension",
+      "dornase alfa 1 MG/ML Inhalation Solution",
+      "Pancreatin 600 MG Oral Tablet",
+      "Acetaminophen 325 MG Oral Tablet",
+      "24 HR Metformin hydrochloride 500 MG Extended Release Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P047": {
+    "patient_id": "P047",
+    "synthea_id": "716c6d0a-2a5d-0aaa-9ced-312ed6a943da",
+    "name": "Lance Padberg",
+    "age": 62,
+    "gender": "M",
+    "area": "Jayanagar",
+    "lat": 12.915453,
+    "lng": 77.58579,
+    "history": [
+      "Chronic sinusitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Hyperlipidemia (disorder)",
+      "Gingivitis (disorder)",
+      "Acute bronchitis (disorder)",
+      "Viral sinusitis (disorder)",
+      "Essential hypertension (disorder)",
+      "Sprain (morphologic abnormality)",
+      "Sprain of ankle (disorder)",
+      "Otitis media (disorder)",
+      "Sterilization requested (situation)",
+      "Polyp of colon (disorder)"
+    ],
+    "current_medications": [
+      "lisinopril 10 MG Oral Tablet",
+      "amLODIPine 2.5 MG Oral Tablet",
+      "Simvastatin 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P048": {
+    "patient_id": "P048",
+    "synthea_id": "8ece28c6-f931-b0e0-5c0e-72b8d8d3c86a",
+    "name": "Aurelio Eichmann",
+    "age": 84,
+    "gender": "M",
+    "area": "Indiranagar",
+    "lat": 12.977413,
+    "lng": 77.641661,
+    "history": [
+      "Gout",
+      "Essential hypertension (disorder)",
+      "Chronic pain (finding)",
+      "Osteoporosis (disorder)",
+      "Acute ST segment elevation myocardial infarction (disorder)",
+      "History of myocardial infarction (situation)",
+      "Ischemic heart disease (disorder)",
+      "Severe anxiety (panic) (finding)",
+      "Abnormal findings diagnostic imaging heart+coronary circulat (finding)",
+      "Primary dental caries (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Gingivitis (disorder)"
+    ],
+    "current_medications": [
+      "aspirin 81 MG Oral Tablet",
+      "metoprolol tartrate 100 MG Oral Tablet",
+      "pravastatin sodium 40 MG Oral Tablet",
+      "Clopidogrel 75 MG Oral Tablet",
+      "Simvastatin 20 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray",
+      "Hydrochlorothiazide 25 MG Oral Tablet",
+      "Alendronic acid 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P049": {
+    "patient_id": "P049",
+    "synthea_id": "e503e9b3-d149-653b-92df-ca4a8cb68e16",
+    "name": "Nilda Wiza",
+    "age": 41,
+    "gender": "F",
+    "area": "Koramangala",
+    "lat": 12.933197,
+    "lng": 77.632992,
+    "history": [
+      "Adolescent idiopathic scoliosis (disorder)",
+      "Chronic sinusitis (disorder)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Past pregnancy history of miscarriage (situation)",
+      "Viral sinusitis (disorder)",
+      "Normal pregnancy (finding)"
+    ],
+    "current_medications": [
+      "ferrous sulfate 325 MG Oral Tablet",
+      "{5 (dienogest 2 MG / estradiol valerate 2 MG Oral Tablet) / 17 (dienogest 3 MG / estradiol valerate 2 MG Oral Tablet) / 2 (estradiol valerate 1 MG Oral Tablet) / 2 (estradiol valerate 3 MG Oral Tablet) / 2 (inert ingredients 1 MG Oral Tablet) } Pack"
+    ],
+    "allergies": []
+  },
+  "P050": {
+    "patient_id": "P050",
+    "synthea_id": "3fa46c70-b194-f14c-3d51-e06cfa4bb9e2",
+    "name": "Preston Little",
+    "age": 31,
+    "gender": "M",
+    "area": "Malleshwaram",
+    "lat": 13.008247,
+    "lng": 77.565613,
+    "history": [
+      "Injury of tendon of the rotator cuff of shoulder (disorder)",
+      "Streptococcal sore throat (disorder)",
+      "Gingivitis (disorder)",
+      "Sprain (morphologic abnormality)",
+      "Sprain of ankle (disorder)",
+      "Viral sinusitis (disorder)",
+      "Gingival disease (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P051": {
+    "patient_id": "P051",
+    "synthea_id": "fd0d7b3a-307d-07b8-9d7e-2424e1feb9e4",
+    "name": "Ken Grant",
+    "age": 62,
+    "gender": "M",
+    "area": "HSR Layout",
+    "lat": 12.915839,
+    "lng": 77.638976,
+    "history": [
+      "Chronic sinusitis (disorder)",
+      "Prediabetes (finding)",
+      "Body mass index 30+ - obesity (finding)",
+      "Impacted molars (disorder)",
+      "Anemia (disorder)",
+      "Gingivitis (disorder)",
+      "Viral sinusitis (disorder)",
+      "Laceration - injury (disorder)",
+      "Laceration of foot (disorder)",
+      "Chronic pain (finding)",
+      "Acute viral pharyngitis (disorder)",
+      "Gingival disease (disorder)"
+    ],
+    "current_medications": [
+      "Vitamin B12 5 MG/ML Injectable Solution"
+    ],
+    "allergies": []
+  },
+  "P052": {
+    "patient_id": "P052",
+    "synthea_id": "ccaa0537-4e7f-99d8-8b79-c7c94c749579",
+    "name": "Manuela Montoya",
+    "age": 21,
+    "gender": "F",
+    "area": "Electronic City",
+    "lat": 12.836998,
+    "lng": 77.669004,
+    "history": [
+      "Chronic sinusitis (disorder)",
+      "Atopic dermatitis (disorder)",
+      "Perennial allergic rhinitis with seasonal variation (disorder)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Normal pregnancy (finding)",
+      "Eclampsia in pregnancy (disorder)",
+      "Acute bronchitis (disorder)",
+      "Acute infective cystitis (disorder)"
+    ],
+    "current_medications": [
+      "Loratadine 5 MG Chewable Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Bee venom (substance)",
+      "Mold (organism)",
+      "House dust mite (organism)",
+      "Animal dander (substance)"
+    ]
+  },
+  "P053": {
+    "patient_id": "P053",
+    "synthea_id": "6b687f11-0721-ccaf-8796-5e929f37b755",
+    "name": "Bryce Stoltenberg",
+    "age": 45,
+    "gender": "M",
+    "area": "BTM Layout",
+    "lat": 12.907889,
+    "lng": 77.604385,
+    "history": [
+      "History of appendectomy (situation)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Primary dental caries (disorder)",
+      "Concussion injury of brain (disorder)",
+      "Concussion with no loss of consciousness (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Infection of tooth (disorder)",
+      "Viral sinusitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P054": {
+    "patient_id": "P054",
+    "synthea_id": "a5816bea-ad10-431f-1281-47baa2cf249b",
+    "name": "Tonisha Grady",
+    "age": 17,
+    "gender": "F",
+    "area": "Whitefield",
+    "lat": 12.969299,
+    "lng": 77.751439,
+    "history": [
+      "Atopic dermatitis (disorder)",
+      "Perennial allergic rhinitis with seasonal variation (disorder)",
+      "Gingivitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Primary dental caries (disorder)",
+      "Sprain (morphologic abnormality)",
+      "Sprain of wrist (disorder)",
+      "Viral sinusitis (disorder)"
+    ],
+    "current_medications": [
+      "cetirizine hydrochloride 5 MG Oral Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Mold (organism)",
+      "House dust mite (organism)",
+      "Animal dander (substance)",
+      "Grass pollen (substance)"
+    ]
+  },
+  "P055": {
+    "patient_id": "P055",
+    "synthea_id": "1e32a1a3-3638-cb8c-7253-ff98a97dc0fe",
+    "name": "Jewell Hammes",
+    "age": 14,
+    "gender": "M",
+    "area": "Bellandur",
+    "lat": 12.929705,
+    "lng": 77.670192,
+    "history": [
+      "Acute viral pharyngitis (disorder)",
+      "Viral sinusitis (disorder)",
+      "Gingivitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P056": {
+    "patient_id": "P056",
+    "synthea_id": "197ec76f-0730-2587-9ff9-a0f60104a782",
+    "name": "Reynalda Leuschke",
+    "age": 19,
+    "gender": "F",
+    "area": "Marathahalli",
+    "lat": 12.954075,
+    "lng": 77.691636,
+    "history": [
+      "Fracture of bone (disorder)",
+      "Fracture of ankle (disorder)",
+      "Severe anxiety (panic) (finding)",
+      "Viral sinusitis (disorder)",
+      "Acute infective cystitis (disorder)",
+      "Infection of tooth (disorder)",
+      "Gingival disease (disorder)",
+      "Educated to high school level (finding)"
+    ],
+    "current_medications": [
+      "168 HR Ethinyl Estradiol 0.00146 MG/HR / norelgestromin 0.00625 MG/HR Transdermal System"
+    ],
+    "allergies": []
+  },
+  "P057": {
+    "patient_id": "P057",
+    "synthea_id": "82623afe-e51c-e02e-1dd7-15a4394d0e92",
+    "name": "Jordan Abbott",
+    "age": 26,
+    "gender": "F",
+    "area": "Marathahalli",
+    "lat": 12.957601,
+    "lng": 77.694722,
+    "history": [
+      "Childhood asthma (disorder)",
+      "Seasonal allergic rhinitis (disorder)",
+      "Chronic pain (finding)",
+      "Chronic neck pain (finding)",
+      "Gingivitis (disorder)",
+      "Asthma (disorder)",
+      "Sprain (morphologic abnormality)",
+      "Sprain of wrist (disorder)",
+      "Normal pregnancy (finding)",
+      "Gingival disease (disorder)",
+      "Essential hypertension (disorder)",
+      "Primary dental caries (disorder)"
+    ],
+    "current_medications": [
+      "Fexofenadine hydrochloride 30 MG Oral Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector",
+      "budesonide 0.25 MG/ML Inhalation Suspension",
+      "Hydrochlorothiazide 25 MG Oral Tablet",
+      "lisinopril 10 MG Oral Tablet",
+      "amLODIPine 2.5 MG Oral Tablet",
+      "albuterol 0.21 MG/ML Inhalation Solution"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Mold (organism)",
+      "Animal dander (substance)",
+      "Grass pollen (substance)",
+      "Tree pollen (substance)"
+    ]
+  },
+  "P058": {
+    "patient_id": "P058",
+    "synthea_id": "8d91c36a-1f7e-3842-9f14-8d567ed9cdcd",
+    "name": "Benito Gulgowski",
+    "age": 45,
+    "gender": "M",
+    "area": "Rajajinagar",
+    "lat": 13.00147,
+    "lng": 77.562732,
+    "history": [
+      "Chronic sinusitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Laceration - injury (disorder)",
+      "Laceration of hand (disorder)",
+      "Viral sinusitis (disorder)",
+      "Chronic congestive heart failure (disorder)",
+      "Body mass index 30+ - obesity (finding)"
+    ],
+    "current_medications": [
+      "carvedilol 25 MG Oral Tablet",
+      "Furosemide 40 MG Oral Tablet",
+      "losartan potassium 50 MG Oral Tablet",
+      "lisinopril 20 MG Oral Tablet",
+      "sacubitril 97 MG / valsartan 103 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P059": {
+    "patient_id": "P059",
+    "synthea_id": "c1453af6-5763-f853-7da2-a16adee55469",
+    "name": "Marci Murphy",
+    "age": 12,
+    "gender": "F",
+    "area": "Rajajinagar",
+    "lat": 12.992709,
+    "lng": 77.555946,
+    "history": [
+      "Otitis media (disorder)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Concussion injury of brain (disorder)",
+      "Concussion with no loss of consciousness (disorder)",
+      "Acute viral pharyngitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P060": {
+    "patient_id": "P060",
+    "synthea_id": "57efda89-b582-bb08-8a2d-e06b2c184bfc",
+    "name": "Pat Rutherford",
+    "age": 50,
+    "gender": "M",
+    "area": "Indiranagar",
+    "lat": 12.978867,
+    "lng": 77.64062,
+    "history": [
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Diabetes mellitus type 2 (disorder)",
+      "Hypertriglyceridemia (disorder)",
+      "Chronic sinusitis (disorder)",
+      "Metabolic syndrome X (disorder)",
+      "Chronic kidney disease stage 1 (disorder)",
+      "Disorder of kidney due to diabetes mellitus (disorder)",
+      "Gingivitis (disorder)",
+      "Acute bronchitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Chronic kidney disease stage 2 (disorder)"
+    ],
+    "current_medications": [
+      "Hydrocortisone 10 MG/ML Topical Cream",
+      "cetirizine hydrochloride 10 MG Oral Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector",
+      "insulin isophane human 70 UNT/ML / insulin regular human 30 UNT/ML Injectable Suspension"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)"
+    ]
+  },
+  "P061": {
+    "patient_id": "P061",
+    "synthea_id": "e142981b-3577-4115-584d-d9676df7fcff",
+    "name": "Julian Walsh",
+    "age": 45,
+    "gender": "M",
+    "area": "Electronic City",
+    "lat": 12.84564,
+    "lng": 77.653341,
+    "history": [
+      "Gingivitis (disorder)",
+      "Laceration - injury (disorder)",
+      "Laceration of forearm (disorder)",
+      "Suspected disease caused by Severe acute respiratory coronavirus 2 (situation)",
+      "Headache (finding)",
+      "Cough (finding)",
+      "Fever (finding)",
+      "Disease caused by severe acute respiratory syndrome coronavirus 2 (disorder)",
+      "Viral sinusitis (disorder)",
+      "Acute bronchitis (disorder)",
+      "Primary dental caries (disorder)",
+      "Burn injury (morphologic abnormality)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P062": {
+    "patient_id": "P062",
+    "synthea_id": "adec1419-cf81-6640-abe6-cac7c0c1b9d4",
+    "name": "Nathaniel Kuhic",
+    "age": 62,
+    "gender": "M",
+    "area": "JP Nagar",
+    "lat": 12.915722,
+    "lng": 77.593556,
+    "history": [
+      "Chronic sinusitis (disorder)",
+      "History of appendectomy (situation)",
+      "Body mass index 30+ - obesity (finding)",
+      "Gout",
+      "Loss of teeth (disorder)",
+      "Sinusitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Sleep disorder (disorder)",
+      "Obstructive sleep apnea syndrome (disorder)",
+      "Acute infective cystitis (disorder)",
+      "Gingivitis (disorder)",
+      "Acute bronchitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P063": {
+    "patient_id": "P063",
+    "synthea_id": "5780b82b-0419-ffe6-fde4-a2fcce9695f5",
+    "name": "Audra Maggio",
+    "age": 6,
+    "gender": "F",
+    "area": "Whitefield",
+    "lat": 12.974512,
+    "lng": 77.748003,
+    "history": [
+      "Otitis media (disorder)",
+      "Acute bacterial sinusitis (disorder)",
+      "Chronic sinusitis (disorder)",
+      "Gingival disease (disorder)",
+      "Primary dental caries (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P064": {
+    "patient_id": "P064",
+    "synthea_id": "765bd034-e8d7-f102-eb1c-4b7792fc5684",
+    "name": "Danial Grimes",
+    "age": 9,
+    "gender": "M",
+    "area": "Whitefield",
+    "lat": 12.969224,
+    "lng": 77.748405,
+    "history": [
+      "Streptococcal sore throat (disorder)",
+      "Acute bronchitis (disorder)",
+      "Viral sinusitis (disorder)",
+      "Otitis media (disorder)",
+      "Perennial allergic rhinitis with seasonal variation (disorder)",
+      "Primary dental caries (disorder)",
+      "Sprain (morphologic abnormality)",
+      "Sprain of wrist (disorder)"
+    ],
+    "current_medications": [
+      "cetirizine hydrochloride 5 MG Oral Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Mold (organism)",
+      "House dust mite (organism)",
+      "Animal dander (substance)",
+      "Grass pollen (substance)"
+    ]
+  },
+  "P065": {
+    "patient_id": "P065",
+    "synthea_id": "edb5a2e3-a981-d33c-5eac-1ca8adde82d3",
+    "name": "Eleonor Mosciski",
+    "age": 19,
+    "gender": "F",
+    "area": "Malleshwaram",
+    "lat": 13.00635,
+    "lng": 77.571927,
+    "history": [
+      "Childhood asthma (disorder)",
+      "Gingivitis (disorder)",
+      "Adolescent idiopathic scoliosis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Viral sinusitis (disorder)",
+      "Gingival disease (disorder)",
+      "Educated to high school level (finding)",
+      "Fractured dental filling (finding)"
+    ],
+    "current_medications": [
+      "budesonide 0.25 MG/ML Inhalation Suspension",
+      "albuterol 0.83 MG/ML Inhalation Solution"
+    ],
+    "allergies": []
+  },
+  "P066": {
+    "patient_id": "P066",
+    "synthea_id": "8704c44c-8b97-e35a-3bac-7d5b24de06b3",
+    "name": "Rosanne Simonis",
+    "age": 37,
+    "gender": "F",
+    "area": "Jayanagar",
+    "lat": 12.91971,
+    "lng": 77.59274,
+    "history": [
+      "Recurrent urinary tract infection (disorder)",
+      "Past pregnancy history of miscarriage (situation)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Chronic neck pain (finding)",
+      "Opioid abuse",
+      "Viral sinusitis (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Gingivitis (disorder)",
+      "Normal pregnancy (finding)",
+      "Gingival disease (disorder)",
+      "Acute bronchitis (disorder)"
+    ],
+    "current_medications": [
+      "buprenorphine 2 MG / naloxone 0.5 MG Sublingual Tablet"
+    ],
+    "allergies": []
+  },
+  "P067": {
+    "patient_id": "P067",
+    "synthea_id": "887e4b4e-a3e1-b573-4a16-38386d3e0b88",
+    "name": "Barton Upton",
+    "age": 21,
+    "gender": "M",
+    "area": "HSR Layout",
+    "lat": 12.912938,
+    "lng": 77.637504,
+    "history": [
+      "Perennial allergic rhinitis with seasonal variation (disorder)",
+      "Adolescent idiopathic scoliosis (disorder)",
+      "Primary dental caries (disorder)",
+      "Dental filling lost (finding)",
+      "Gingivitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Educated to high school level (finding)",
+      "Acute bronchitis (disorder)",
+      "Sprain (morphologic abnormality)",
+      "Sprain of ankle (disorder)"
+    ],
+    "current_medications": [
+      "Fexofenadine hydrochloride 30 MG Oral Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Latex (substance)",
+      "Bee venom (substance)",
+      "Mold (organism)",
+      "Animal dander (substance)"
+    ]
+  },
+  "P068": {
+    "patient_id": "P068",
+    "synthea_id": "0f3d04a2-f42e-1429-acef-0becd0a0fcea",
+    "name": "Leland King",
+    "age": 95,
+    "gender": "M",
+    "area": "Bellandur",
+    "lat": 12.918667,
+    "lng": 77.668127,
+    "history": [
+      "Body mass index 30+ - obesity (finding)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Acute non-ST segment elevation myocardial infarction (disorder)",
+      "History of myocardial infarction (situation)",
+      "Ischemic heart disease (disorder)",
+      "Abnormal findings diagnostic imaging heart+coronary circulat (finding)",
+      "Aortic valve stenosis (disorder)",
+      "History of aortic valve replacement (situation)",
+      "Gingival disease (disorder)",
+      "Fracture of bone (disorder)",
+      "Fracture of forearm (disorder)"
+    ],
+    "current_medications": [
+      "aspirin 81 MG Oral Tablet",
+      "metoprolol tartrate 50 MG Oral Tablet",
+      "atorvastatin 40 MG Oral Tablet",
+      "prasugrel 10 MG Oral Tablet",
+      "Clopidogrel 75 MG Oral Tablet",
+      "Simvastatin 20 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray",
+      "Alteplase 100 MG Injection",
+      "aspirin 81 MG Oral Capsule"
+    ],
+    "allergies": []
+  },
+  "P069": {
+    "patient_id": "P069",
+    "synthea_id": "9c5b16dc-8a47-896c-4d74-f96f8c98891b",
+    "name": "Boyce Nolan",
+    "age": 46,
+    "gender": "M",
+    "area": "Indiranagar",
+    "lat": 12.974711,
+    "lng": 77.649726,
+    "history": [
+      "Educated to high school level (finding)",
+      "Body mass index 30+ - obesity (finding)",
+      "Asthma (disorder)",
+      "Essential hypertension (disorder)",
+      "Gingivitis (disorder)",
+      "Myocardial infarction (disorder)",
+      "Acute non-ST segment elevation myocardial infarction (disorder)",
+      "History of myocardial infarction (situation)",
+      "Acute infective cystitis (disorder)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Injury of neck (disorder)"
+    ],
+    "current_medications": [
+      "aspirin 81 MG Oral Tablet",
+      "metoprolol tartrate 25 MG Oral Tablet",
+      "rosuvastatin calcium 20 MG Oral Tablet",
+      "prasugrel 10 MG Oral Tablet",
+      "budesonide 0.25 MG/ML Inhalation Suspension",
+      "Hydrochlorothiazide 25 MG Oral Tablet",
+      "lisinopril 10 MG Oral Tablet",
+      "NDA021457 200 ACTUAT albuterol 0.09 MG/ACTUAT Metered Dose Inhaler",
+      "amLODIPine 2.5 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P070": {
+    "patient_id": "P070",
+    "synthea_id": "ad48e669-959c-b6f8-8ddb-dda7a6d37473",
+    "name": "Babara Gutkowski",
+    "age": 24,
+    "gender": "F",
+    "area": "Koramangala",
+    "lat": 12.934783,
+    "lng": 77.623085,
+    "history": [
+      "Acute infective cystitis (disorder)",
+      "Gingivitis (disorder)",
+      "Primary dental caries (disorder)",
+      "Viral sinusitis (disorder)",
+      "Normal pregnancy (finding)",
+      "Pre-eclampsia (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P071": {
+    "patient_id": "P071",
+    "synthea_id": "f870c432-0887-125e-f778-cf5110d3de1d",
+    "name": "Ellis Larson",
+    "age": 57,
+    "gender": "M",
+    "area": "Whitefield",
+    "lat": 12.978434,
+    "lng": 77.748061,
+    "history": [
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Sleep disorder (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Sleep apnea (disorder)",
+      "Ischemic heart disease (disorder)",
+      "Abnormal findings diagnostic imaging heart+coronary circulat (finding)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Acute viral pharyngitis (disorder)",
+      "Viral sinusitis (disorder)",
+      "Gingival disease (disorder)"
+    ],
+    "current_medications": [
+      "Vitamin B12 5 MG/ML Injectable Solution",
+      "Clopidogrel 75 MG Oral Tablet",
+      "Simvastatin 20 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray",
+      "Simvastatin 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P072": {
+    "patient_id": "P072",
+    "synthea_id": "1426480f-ccc7-2393-40bd-f92ccf2b74b2",
+    "name": "Rogelio Monahan",
+    "age": 64,
+    "gender": "M",
+    "area": "BTM Layout",
+    "lat": 12.910316,
+    "lng": 77.615584,
+    "history": [
+      "Educated to high school level (finding)",
+      "Body mass index 30+ - obesity (finding)",
+      "Sepsis (disorder)",
+      "Essential hypertension (disorder)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Fibromyalgia (disorder)",
+      "Viral sinusitis (disorder)",
+      "Gingivitis (disorder)",
+      "Ischemic heart disease (disorder)",
+      "Severe anxiety (panic) (finding)",
+      "Abnormal findings diagnostic imaging heart+coronary circulat (finding)"
+    ],
+    "current_medications": [
+      "diphenhydrAMINE Hydrochloride 25 MG Oral Tablet",
+      "Clopidogrel 75 MG Oral Tablet",
+      "Simvastatin 20 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray",
+      "lisinopril 10 MG Oral Tablet",
+      "Acetaminophen 300 MG / Hydrocodone Bitartrate 5 MG Oral Tablet"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)"
+    ]
+  },
+  "P073": {
+    "patient_id": "P073",
+    "synthea_id": "4be6b5fb-2a19-943a-9249-7068445be4cc",
+    "name": "Lamar Beer",
+    "age": 55,
+    "gender": "M",
+    "area": "Whitefield",
+    "lat": 12.971809,
+    "lng": 77.744547,
+    "history": [
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Chronic sinusitis (disorder)",
+      "Gingivitis (disorder)",
+      "Acute bronchitis (disorder)",
+      "Infection of tooth (disorder)",
+      "Alveolitis of jaw (disorder)",
+      "Loss of teeth (disorder)",
+      "Torus palatinus (disorder)",
+      "Streptococcal sore throat (disorder)",
+      "Viral sinusitis (disorder)",
+      "Acute viral pharyngitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P074": {
+    "patient_id": "P074",
+    "synthea_id": "031ce8e2-1443-01b4-de6b-61a4084a7166",
+    "name": "Carmelo Kirlin",
+    "age": 45,
+    "gender": "M",
+    "area": "Marathahalli",
+    "lat": 12.951113,
+    "lng": 77.705163,
+    "history": [
+      "Chronic intractable migraine without aura (disorder)",
+      "Impacted molars (disorder)",
+      "Dependent drug abuse (disorder)",
+      "Homeless (finding)",
+      "Overdose (disorder)",
+      "Essential hypertension (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Dental filling lost (finding)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Chronic neck pain (finding)",
+      "Viral sinusitis (disorder)"
+    ],
+    "current_medications": [
+      "Acetaminophen 300 MG / Hydrocodone Bitartrate 5 MG Oral Tablet",
+      "Hydrochlorothiazide 25 MG Oral Tablet",
+      "Ibuprofen 400 MG Oral Tablet",
+      "lisinopril 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P075": {
+    "patient_id": "P075",
+    "synthea_id": "23da8e71-dfb9-9773-1bc1-7b5e31d085b5",
+    "name": "Bo Klein",
+    "age": 63,
+    "gender": "M",
+    "area": "Malleshwaram",
+    "lat": 13.001563,
+    "lng": 77.568714,
+    "history": [
+      "History of appendectomy (situation)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Ischemic heart disease (disorder)",
+      "Abnormal findings diagnostic imaging heart+coronary circulat (finding)",
+      "History of coronary artery bypass grafting (situation)",
+      "Body mass index 30+ - obesity (finding)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Infection of tooth (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Laceration - injury (disorder)"
+    ],
+    "current_medications": [
+      "Clopidogrel 75 MG Oral Tablet",
+      "Simvastatin 20 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray"
+    ],
+    "allergies": []
+  },
+  "P076": {
+    "patient_id": "P076",
+    "synthea_id": "97e39468-6488-ca8f-fac2-235a80b4dcf7",
+    "name": "Enrique Rojas",
+    "age": 41,
+    "gender": "M",
+    "area": "Koramangala",
+    "lat": 12.928145,
+    "lng": 77.631816,
+    "history": [
+      "Gingivitis (disorder)",
+      "Primary dental caries (disorder)",
+      "Viral sinusitis (disorder)",
+      "Sinusitis (disorder)",
+      "Acute infective cystitis (disorder)",
+      "Osteoarthritis of knee (disorder)"
+    ],
+    "current_medications": [
+      "Terfenadine 60 MG Oral Tablet",
+      "Naproxen sodium 220 MG Oral Tablet"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Shellfish (substance)"
+    ]
+  },
+  "P077": {
+    "patient_id": "P077",
+    "synthea_id": "31f368d9-3fdc-a15f-ccdc-fafa74a860e9",
+    "name": "Manuel Frami",
+    "age": 45,
+    "gender": "M",
+    "area": "HSR Layout",
+    "lat": 12.920364,
+    "lng": 77.636902,
+    "history": [
+      "Chronic sinusitis (disorder)",
+      "Chronic intractable migraine without aura (disorder)",
+      "Impacted molars (disorder)",
+      "Chronic pain (finding)",
+      "Serving in military service (finding)",
+      "Loss of teeth (disorder)",
+      "Dependent drug abuse (disorder)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Traumatic dislocation of temporomandibular joint (disorder)",
+      "Viral sinusitis (disorder)",
+      "Acute bronchitis (disorder)"
+    ],
+    "current_medications": [
+      "Astemizole 10 MG Oral Tablet"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Tree pollen (substance)",
+      "Aspirin",
+      "Shellfish (substance)"
+    ]
+  },
+  "P078": {
+    "patient_id": "P078",
+    "synthea_id": "ba47a33b-ffb6-25b9-e8bf-e7eabeaee1be",
+    "name": "Maximo Pagac",
+    "age": 26,
+    "gender": "M",
+    "area": "Whitefield",
+    "lat": 12.978487,
+    "lng": 77.753348,
+    "history": [
+      "Chronic sinusitis (disorder)",
+      "Gingivitis (disorder)",
+      "Acute bronchitis (disorder)",
+      "Concussion injury of brain (disorder)",
+      "Concussion with no loss of consciousness (disorder)",
+      "Viral sinusitis (disorder)",
+      "Gingival disease (disorder)",
+      "Acute viral pharyngitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P079": {
+    "patient_id": "P079",
+    "synthea_id": "6d04a400-ad21-5951-b092-c14b6358d4c5",
+    "name": "Marquitta Hickle",
+    "age": 15,
+    "gender": "F",
+    "area": "Malleshwaram",
+    "lat": 13.011243,
+    "lng": 77.57433,
+    "history": [
+      "Acute viral pharyngitis (disorder)",
+      "Acute bronchitis (disorder)",
+      "Viral sinusitis (disorder)",
+      "Gingival disease (disorder)",
+      "Sinusitis (disorder)",
+      "Normal pregnancy (finding)",
+      "Pre-eclampsia (disorder)",
+      "Fracture of bone (disorder)",
+      "Fracture of forearm (disorder)"
+    ],
+    "current_medications": [
+      "{21 (ethinyl estradiol 0.03 MG / levonorgestrel 0.15 MG Oral Tablet) / 7 (inert ingredients 1 MG Oral Tablet) } Pack",
+      "Meperidine Hydrochloride 50 MG Oral Tablet",
+      "Naproxen sodium 220 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P080": {
+    "patient_id": "P080",
+    "synthea_id": "35f80d0e-eaad-ef68-b762-3a1c12a872c1",
+    "name": "Brady Olson",
+    "age": 46,
+    "gender": "M",
+    "area": "Koramangala",
+    "lat": 12.943325,
+    "lng": 77.63309,
+    "history": [
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Acute viral pharyngitis (disorder)",
+      "Concussion injury of brain (disorder)",
+      "Concussion with no loss of consciousness (disorder)",
+      "Acute infective cystitis (disorder)",
+      "Essential hypertension (disorder)",
+      "Metabolic syndrome X (disorder)"
+    ],
+    "current_medications": [
+      "lisinopril 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P081": {
+    "patient_id": "P081",
+    "synthea_id": "babc4b97-d859-0fe4-2874-fb6fe493ae6b",
+    "name": "Martha Wiegand",
+    "age": 3,
+    "gender": "F",
+    "area": "BTM Layout",
+    "lat": 12.921439,
+    "lng": 77.607211,
+    "history": [
+      "Viral sinusitis (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Otitis media (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P082": {
+    "patient_id": "P082",
+    "synthea_id": "bd4e49cb-391b-d08a-c7ab-b585e7bd5758",
+    "name": "Tanner Lubowitz",
+    "age": 41,
+    "gender": "M",
+    "area": "BTM Layout",
+    "lat": 12.909594,
+    "lng": 77.613935,
+    "history": [
+      "Body mass index 30+ - obesity (finding)",
+      "Gingivitis (disorder)",
+      "Prediabetes (finding)",
+      "Dental filling lost (finding)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P083": {
+    "patient_id": "P083",
+    "synthea_id": "f6359fe4-4340-2820-8b76-593a45f5186c",
+    "name": "Angelique Gerhold",
+    "age": 19,
+    "gender": "F",
+    "area": "Malleshwaram",
+    "lat": 12.998756,
+    "lng": 77.565408,
+    "history": [
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Fracture of bone (disorder)",
+      "Fracture of ankle (disorder)",
+      "Viral sinusitis (disorder)",
+      "Primary dental caries (disorder)",
+      "Fracture of forearm (disorder)",
+      "Normal pregnancy (finding)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Chronic neck pain (finding)",
+      "Acute infective cystitis (disorder)"
+    ],
+    "current_medications": [
+      "72 HR Fentanyl 0.025 MG/HR Transdermal System",
+      "tramadol hydrochloride 50 MG Oral Tablet",
+      "12 HR Hydrocodone Bitartrate 10 MG Extended Release Oral Capsule"
+    ],
+    "allergies": []
+  },
+  "P084": {
+    "patient_id": "P084",
+    "synthea_id": "afb99eee-0bd5-8853-8a32-fad74da7b103",
+    "name": "Will Haley",
+    "age": 27,
+    "gender": "M",
+    "area": "HSR Layout",
+    "lat": 12.905454,
+    "lng": 77.639034,
+    "history": [
+      "Educated to high school level (finding)",
+      "Fracture of bone (disorder)",
+      "Fracture of rib (disorder)",
+      "Acute infective cystitis (disorder)",
+      "Gingivitis (disorder)",
+      "Concussion injury of brain (disorder)",
+      "Concussion with loss of consciousness (disorder)",
+      "Viral sinusitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P085": {
+    "patient_id": "P085",
+    "synthea_id": "5dae1e9e-46fb-5537-54f4-8837a56dd3d5",
+    "name": "John D'Amore",
+    "age": 32,
+    "gender": "M",
+    "area": "JP Nagar",
+    "lat": 12.906666,
+    "lng": 77.582647,
+    "history": [
+      "Educated to high school level (finding)",
+      "Acute viral pharyngitis (disorder)",
+      "Laceration - injury (disorder)",
+      "Laceration of foot (disorder)",
+      "Viral sinusitis (disorder)",
+      "Acute infective cystitis (disorder)",
+      "Sprain (morphologic abnormality)",
+      "Sprain of wrist (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P086": {
+    "patient_id": "P086",
+    "synthea_id": "d309f605-948b-962f-ca72-878ce8b8d154",
+    "name": "Tabatha Ruecker",
+    "age": 65,
+    "gender": "F",
+    "area": "Bellandur",
+    "lat": 12.923304,
+    "lng": 77.671995,
+    "history": [
+      "History of appendectomy (situation)",
+      "Essential hypertension (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Past pregnancy history of miscarriage (situation)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Metabolic syndrome X (disorder)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Viral sinusitis (disorder)",
+      "Fractured dental filling (finding)",
+      "Primary dental caries (disorder)"
+    ],
+    "current_medications": [
+      "Hydrochlorothiazide 25 MG Oral Tablet",
+      "lisinopril 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P087": {
+    "patient_id": "P087",
+    "synthea_id": "2fb99851-6f31-04a6-be96-6fef4663e208",
+    "name": "Michale Ankunding",
+    "age": 64,
+    "gender": "M",
+    "area": "Rajajinagar",
+    "lat": 12.990164,
+    "lng": 77.554147,
+    "history": [
+      "Asthma (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Polyp of colon (disorder)",
+      "Recurrent rectal polyp (disorder)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Chronic neck pain (finding)",
+      "Aortic valve stenosis (disorder)",
+      "Gingivitis (disorder)",
+      "Fractured dental filling (finding)"
+    ],
+    "current_medications": [
+      "Acetaminophen 325 MG Oral Tablet",
+      "120 ACTUAT fluticasone propionate 0.044 MG/ACTUAT Metered Dose Inhaler",
+      "lisinopril 10 MG Oral Tablet",
+      "aspirin 81 MG Oral Capsule",
+      "albuterol 0.83 MG/ML Inhalation Solution"
+    ],
+    "allergies": []
+  },
+  "P088": {
+    "patient_id": "P088",
+    "synthea_id": "f67eaca3-2366-7ee2-6887-a5bd449b54a6",
+    "name": "Lou Little",
+    "age": 36,
+    "gender": "M",
+    "area": "Electronic City",
+    "lat": 12.854035,
+    "lng": 77.665468,
+    "history": [
+      "Chronic intractable migraine without aura (disorder)",
+      "Educated to high school level (finding)",
+      "Prediabetes (finding)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Chronic neck pain (finding)",
+      "Anemia (disorder)",
+      "Gingivitis (disorder)",
+      "Acute viral pharyngitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P089": {
+    "patient_id": "P089",
+    "synthea_id": "96de62ae-1b00-58d8-77f9-cd25414e16be",
+    "name": "Thuy VonRueden",
+    "age": 28,
+    "gender": "F",
+    "area": "HSR Layout",
+    "lat": 12.903254,
+    "lng": 77.647271,
+    "history": [
+      "Perennial allergic rhinitis with seasonal variation (disorder)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Chronic neck pain (finding)",
+      "Educated to high school level (finding)",
+      "Gingivitis (disorder)",
+      "Concussion injury of brain (disorder)",
+      "Concussion with no loss of consciousness (disorder)",
+      "Laceration - injury (disorder)",
+      "Laceration of forearm (disorder)",
+      "Normal pregnancy (finding)",
+      "Anemia (disorder)"
+    ],
+    "current_medications": [
+      "Loratadine 5 MG Chewable Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector",
+      "ferrous sulfate 325 MG Oral Tablet"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Mold (organism)",
+      "Penicillin V"
+    ]
+  },
+  "P090": {
+    "patient_id": "P090",
+    "synthea_id": "46fcc34a-97a1-f038-9bb1-4ae87116ae61",
+    "name": "Micaela Rendón",
+    "age": 41,
+    "gender": "F",
+    "area": "Rajajinagar",
+    "lat": 12.987437,
+    "lng": 77.560849,
+    "history": [
+      "Past pregnancy history of miscarriage (situation)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Fibromyalgia (disorder)",
+      "Normal pregnancy (finding)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Primary dental caries (disorder)",
+      "Viral sinusitis (disorder)"
+    ],
+    "current_medications": [
+      "Terfenadine 60 MG Oral Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector",
+      "Acetaminophen 325 MG / Oxycodone Hydrochloride 10 MG Oral Tablet"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Mold (organism)",
+      "House dust mite (organism)",
+      "Animal dander (substance)",
+      "Grass pollen (substance)"
+    ]
+  },
+  "P091": {
+    "patient_id": "P091",
+    "synthea_id": "6c4283c9-228b-2774-7d25-fbb5a14bdc1b",
+    "name": "Tony Schoen",
+    "age": 40,
+    "gender": "M",
+    "area": "Koramangala",
+    "lat": 12.934225,
+    "lng": 77.632828,
+    "history": [
+      "Chronic sinusitis (disorder)",
+      "Body mass index 40+ - severely obese (finding)",
+      "Acute viral pharyngitis (disorder)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)"
+    ],
+    "current_medications": [
+      "ferrous sulfate 325 MG Oral Tablet",
+      "Vitamin B12 5 MG/ML Injectable Solution"
+    ],
+    "allergies": []
+  },
+  "P092": {
+    "patient_id": "P092",
+    "synthea_id": "30889246-5f7d-9305-542f-55cb89e1f4de",
+    "name": "Dudley Torphy",
+    "age": 66,
+    "gender": "M",
+    "area": "Whitefield",
+    "lat": 12.966593,
+    "lng": 77.742363,
+    "history": [
+      "Seizure disorder (disorder)",
+      "History of seizure (situation)"
+    ],
+    "current_medications": [
+      "carbamazepine 20 MG/ML Oral Suspension"
+    ],
+    "allergies": []
+  },
+  "P093": {
+    "patient_id": "P093",
+    "synthea_id": "e7c068bb-6d29-27d3-0b8b-ec0406cc91b7",
+    "name": "Nan Bednar",
+    "age": 32,
+    "gender": "F",
+    "area": "Indiranagar",
+    "lat": 12.974583,
+    "lng": 77.646297,
+    "history": [
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Viral sinusitis (disorder)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Sterilization requested (situation)",
+      "History of tubal ligation (situation)",
+      "Body mass index 30+ - obesity (finding)",
+      "Gingivitis (disorder)",
+      "Fractured dental filling (finding)",
+      "Infection of tooth (disorder)"
+    ],
+    "current_medications": [
+      "Acetaminophen 325 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P094": {
+    "patient_id": "P094",
+    "synthea_id": "ee4b7339-ca58-b6af-c199-04b6d5761c73",
+    "name": "Stanton Schimmel",
+    "age": 0,
+    "gender": "M",
+    "area": "BTM Layout",
+    "lat": 12.908947,
+    "lng": 77.606284,
+    "history": [],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P095": {
+    "patient_id": "P095",
+    "synthea_id": "3935e8a9-9b9f-fd00-fe22-bcb810d0330b",
+    "name": "Basilia Hagenes",
+    "age": 57,
+    "gender": "F",
+    "area": "JP Nagar",
+    "lat": 12.903289,
+    "lng": 77.579638,
+    "history": [
+      "History of appendectomy (situation)",
+      "Past pregnancy history of miscarriage (situation)",
+      "History of tubal ligation (situation)",
+      "Body mass index 30+ - obesity (finding)",
+      "Osteoarthritis of knee (disorder)",
+      "Hyperlipidemia (disorder)",
+      "Fracture of bone (disorder)",
+      "Fracture of ankle (disorder)",
+      "Malignant neoplasm of breast (disorder)",
+      "Viral sinusitis (disorder)",
+      "Laceration - injury (disorder)",
+      "Laceration of foot (disorder)"
+    ],
+    "current_medications": [
+      "ferrous sulfate 325 MG Oral Tablet",
+      "Naproxen sodium 220 MG Oral Tablet",
+      "Simvastatin 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P096": {
+    "patient_id": "P096",
+    "synthea_id": "1dabc422-e007-d5ee-791f-9e08a8fd9b6a",
+    "name": "Hester Spinka",
+    "age": 8,
+    "gender": "F",
+    "area": "Malleshwaram",
+    "lat": 13.008514,
+    "lng": 77.563876,
+    "history": [
+      "Otitis media (disorder)",
+      "Streptococcal sore throat (disorder)",
+      "Gingival disease (disorder)",
+      "Primary dental caries (disorder)",
+      "Gunshot wound (disorder)",
+      "Bullet wound (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Injury of tendon of the rotator cuff of shoulder (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P097": {
+    "patient_id": "P097",
+    "synthea_id": "3732fde5-efc6-d57a-517b-0500f2177181",
+    "name": "Danny Jacobs",
+    "age": 66,
+    "gender": "M",
+    "area": "Jayanagar",
+    "lat": 12.920565,
+    "lng": 77.598092,
+    "history": [
+      "Educated to high school level (finding)",
+      "Osteoarthritis of knee (disorder)",
+      "Essential hypertension (disorder)",
+      "Hyperlipidemia (disorder)",
+      "Acute infective cystitis (disorder)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Suspected disease caused by Severe acute respiratory coronavirus 2 (situation)",
+      "Cough (finding)",
+      "Dyspnea (finding)",
+      "Wheezing (finding)",
+      "Fever (finding)"
+    ],
+    "current_medications": [
+      "Hydrochlorothiazide 25 MG Oral Tablet",
+      "lisinopril 10 MG Oral Tablet",
+      "amLODIPine 2.5 MG Oral Tablet",
+      "Simvastatin 10 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P098": {
+    "patient_id": "P098",
+    "synthea_id": "9c26986a-d81d-62f0-ee7a-ab8bb6377434",
+    "name": "Barbra Conn",
+    "age": 28,
+    "gender": "F",
+    "area": "Koramangala",
+    "lat": 12.926364,
+    "lng": 77.616896,
+    "history": [
+      "Perennial allergic rhinitis (disorder)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Acute bronchitis (disorder)",
+      "Fractured dental filling (finding)",
+      "Normal pregnancy (finding)",
+      "Primary dental caries (disorder)"
+    ],
+    "current_medications": [
+      "Loratadine 5 MG Chewable Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Mold (organism)",
+      "House dust mite (organism)",
+      "Animal dander (substance)",
+      "Grass pollen (substance)"
+    ]
+  },
+  "P099": {
+    "patient_id": "P099",
+    "synthea_id": "3314e296-2326-2826-271d-a7be5b896db9",
+    "name": "Micah Shanahan",
+    "age": 36,
+    "gender": "F",
+    "area": "Rajajinagar",
+    "lat": 12.992174,
+    "lng": 77.558093,
+    "history": [
+      "Educated to high school level (finding)",
+      "Body mass index 30+ - obesity (finding)",
+      "Normal pregnancy (finding)",
+      "Otitis media (disorder)",
+      "Anemia (disorder)",
+      "Pre-eclampsia (disorder)",
+      "Fracture of bone (disorder)",
+      "Fracture of forearm (disorder)"
+    ],
+    "current_medications": [
+      "{28 (norethindrone 0.35 MG Oral Tablet) } Pack"
+    ],
+    "allergies": []
+  },
+  "P100": {
+    "patient_id": "P100",
+    "synthea_id": "72b1ca95-c4f0-269d-28bf-ba36b25a9aa6",
+    "name": "Brittany Mante",
+    "age": 31,
+    "gender": "F",
+    "area": "Electronic City",
+    "lat": 12.841106,
+    "lng": 77.668391,
+    "history": [
+      "Normal pregnancy (finding)",
+      "Anemia (disorder)",
+      "Viral sinusitis (disorder)",
+      "Prediabetes (finding)",
+      "Acute bronchitis (disorder)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Primary dental caries (disorder)",
+      "Sterilization requested (situation)",
+      "History of tubal ligation (situation)",
+      "Acute infective cystitis (disorder)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P101": {
+    "patient_id": "P101",
+    "synthea_id": "d537941e-1fb7-9868-939a-a26252da8be1",
+    "name": "Hui Stoltenberg",
+    "age": 36,
+    "gender": "F",
+    "area": "Malleshwaram",
+    "lat": 13.007677,
+    "lng": 77.561433,
+    "history": [
+      "Body mass index 30+ - obesity (finding)",
+      "Normal pregnancy (finding)",
+      "Miscarriage in first trimester (disorder)",
+      "Blighted ovum (disorder)",
+      "Past pregnancy history of miscarriage (situation)",
+      "Complete miscarriage (disorder)",
+      "Anemia (disorder)",
+      "Viral sinusitis (disorder)",
+      "Streptococcal sore throat (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Sterilization requested (situation)",
+      "History of tubal ligation (situation)"
+    ],
+    "current_medications": [],
+    "allergies": []
+  },
+  "P102": {
+    "patient_id": "P102",
+    "synthea_id": "3eec36b2-71cc-13c4-489a-495c45318bc3",
+    "name": "Madalyn Crist",
+    "age": 31,
+    "gender": "F",
+    "area": "Electronic City",
+    "lat": 12.853422,
+    "lng": 77.658996,
+    "history": [
+      "Educated to high school level (finding)",
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Acute infective cystitis (disorder)",
+      "Normal pregnancy (finding)",
+      "Recurrent urinary tract infection (disorder)",
+      "Gingival disease (disorder)",
+      "Suspected disease caused by Severe acute respiratory coronavirus 2 (situation)",
+      "Cough (finding)",
+      "Fever (finding)",
+      "Loss of taste (finding)",
+      "Disease caused by severe acute respiratory syndrome coronavirus 2 (disorder)"
+    ],
+    "current_medications": [
+      "Acetaminophen 325 MG / Oxycodone Hydrochloride 10 MG Oral Tablet",
+      "{28 (norethindrone 0.35 MG Oral Tablet) } Pack"
+    ],
+    "allergies": []
+  },
+  "P103": {
+    "patient_id": "P103",
+    "synthea_id": "dc77ef0d-1846-94fd-cce5-a7a555009d17",
+    "name": "Marylee Fisher",
+    "age": 14,
+    "gender": "F",
+    "area": "Jayanagar",
+    "lat": 12.930144,
+    "lng": 77.591876,
+    "history": [
+      "Acute viral pharyngitis (disorder)",
+      "Gingivitis (disorder)",
+      "Injury of knee (disorder)",
+      "Tear of meniscus of knee (disorder)"
+    ],
+    "current_medications": [
+      "{24 (drospirenone 3 MG / ethinyl estradiol 0.02 MG Oral Tablet) / 4 (inert ingredients 1 MG Oral Tablet) } Pack"
+    ],
+    "allergies": []
+  },
+  "P104": {
+    "patient_id": "P104",
+    "synthea_id": "3099d813-4f5c-fc43-31d8-7bba5dc84bed",
+    "name": "Booker Jakubowski",
+    "age": 6,
+    "gender": "M",
+    "area": "Bellandur",
+    "lat": 12.927485,
+    "lng": 77.678085,
+    "history": [
+      "Otitis media (disorder)",
+      "Acute allergic reaction (disorder)",
+      "Acute bacterial sinusitis (disorder)",
+      "Chronic sinusitis (disorder)",
+      "Primary dental caries (disorder)"
+    ],
+    "current_medications": [
+      "cetirizine hydrochloride 5 MG Oral Tablet",
+      "NDA020800 0.3 ML Epinephrine 1 MG/ML Auto-Injector"
+    ],
+    "allergies": [
+      "Allergic disposition (finding)",
+      "Penicillin V",
+      "Shellfish (substance)"
+    ]
+  },
+  "P105": {
+    "patient_id": "P105",
+    "synthea_id": "c823813e-2588-4814-6eb4-824974791862",
+    "name": "Mathilde Hettinger",
+    "age": 45,
+    "gender": "F",
+    "area": "Electronic City",
+    "lat": 12.835223,
+    "lng": 77.664538,
+    "history": [
+      "Educated to high school level (finding)",
+      "Past pregnancy history of miscarriage (situation)",
+      "Chronic sinusitis (disorder)",
+      "Prediabetes (finding)",
+      "Body mass index 30+ - obesity (finding)",
+      "Anemia (disorder)",
+      "Viral sinusitis (disorder)",
+      "Acute bronchitis (disorder)",
+      "Sinusitis (disorder)",
+      "Normal pregnancy (finding)",
+      "Miscarriage in first trimester (disorder)",
+      "Tubal pregnancy (disorder)"
+    ],
+    "current_medications": [
+      "{28 (norethindrone 0.35 MG Oral Tablet) } Pack"
+    ],
+    "allergies": []
+  },
+  "P106": {
+    "patient_id": "P106",
+    "synthea_id": "bca1691f-8839-1d66-ed01-471134d55738",
+    "name": "Cole Corwin",
+    "age": 81,
+    "gender": "M",
+    "area": "Indiranagar",
+    "lat": 12.971805,
+    "lng": 77.64396,
+    "history": [
+      "Chronic sinusitis (disorder)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Hyperlipidemia (disorder)",
+      "Essential hypertension (disorder)",
+      "Metabolic syndrome X (disorder)",
+      "Diabetes mellitus type 2 (disorder)",
+      "Hypertriglyceridemia (disorder)",
+      "Hyperglycemia (disorder)",
+      "Neuropathy due to type 2 diabetes mellitus (disorder)",
+      "Ischemic heart disease (disorder)"
+    ],
+    "current_medications": [
+      "Clopidogrel 75 MG Oral Tablet",
+      "Simvastatin 20 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray",
+      "Galantamine 4 MG Oral Tablet",
+      "Simvastatin 10 MG Oral Tablet",
+      "insulin isophane human 70 UNT/ML / insulin regular human 30 UNT/ML Injectable Suspension",
+      "verapamil hydrochloride 80 MG Oral Tablet",
+      "Digoxin 0.125 MG Oral Tablet",
+      "Hydrochlorothiazide 25 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P107": {
+    "patient_id": "P107",
+    "synthea_id": "ca443842-f546-d34c-a69b-b044cfe007d9",
+    "name": "Gianna Murphy",
+    "age": 40,
+    "gender": "F",
+    "area": "Jayanagar",
+    "lat": 12.925712,
+    "lng": 77.593437,
+    "history": [
+      "Chronic pain (finding)",
+      "Chronic low back pain (finding)",
+      "Chronic neck pain (finding)",
+      "Prediabetes (finding)",
+      "Anemia (disorder)",
+      "Body mass index 30+ - obesity (finding)",
+      "Normal pregnancy (finding)",
+      "Gingivitis (disorder)",
+      "Gingival disease (disorder)",
+      "Acute viral pharyngitis (disorder)",
+      "Impacted molars (disorder)",
+      "Viral sinusitis (disorder)"
+    ],
+    "current_medications": [
+      "Vitamin B12 5 MG/ML Injectable Solution",
+      "Acetaminophen 325 MG / Oxycodone Hydrochloride 10 MG Oral Tablet",
+      "Ibuprofen 400 MG Oral Tablet"
+    ],
+    "allergies": []
+  },
+  "P108": {
+    "patient_id": "P108",
+    "synthea_id": "5693c080-f485-91e7-54b9-ad9a8c12af62",
+    "name": "Maurice Auer",
+    "age": 53,
+    "gender": "M",
+    "area": "Koramangala",
+    "lat": 12.942737,
+    "lng": 77.623693,
+    "history": [
+      "Educated to high school level (finding)",
+      "Prediabetes (finding)",
+      "Body mass index 30+ - obesity (finding)",
+      "Anemia (disorder)",
+      "Impacted molars (disorder)",
+      "Essential hypertension (disorder)",
+      "Metabolic syndrome X (disorder)",
+      "Acute bronchitis (disorder)",
+      "Chronic kidney disease stage 1 (disorder)",
+      "Disorder of kidney due to diabetes mellitus (disorder)",
+      "Primary dental caries (disorder)",
+      "Gingivitis (disorder)"
+    ],
+    "current_medications": [
+      "Clopidogrel 75 MG Oral Tablet",
+      "Simvastatin 20 MG Oral Tablet",
+      "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet",
+      "Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray",
+      "insulin isophane human 70 UNT/ML / insulin regular human 30 UNT/ML Injectable Suspension",
+      "Hydrochlorothiazide 25 MG Oral Tablet"
+    ],
+    "allergies": []
+  }
 }
