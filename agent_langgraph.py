@@ -87,6 +87,13 @@ appropriate healthcare providers.
 
 Reason step by step:
 1. Decide which medical SPECIALTY the complaint requires (e.g. chest pain -> Cardiology).
+   Choose the LEAST specific specialty that still fits. The provider directory is
+   crowd-sourced (OpenStreetMap) and tags narrow specialties sparsely, so an
+   over-specific choice (e.g. Podiatry for a toe splinter) often matches NOTHING
+   anywhere. For minor or general complaints — small cuts, splinters, fever,
+   general aches, minor bleeding — use "General Medicine", or go straight to
+   find_general_facilities. Reserve narrow specialties for clearly specialist
+   needs (Cardiology for chest pain, Dermatology for a rash).
 2. Use get_patient_record to fetch the patient's location and history.
 3. Use find_providers to get the nearest matching specialists.
 4. Give a short, clear recommendation naming the providers and their distances,
@@ -96,14 +103,19 @@ Reason step by step:
    multi-speciality clinic that lists psychiatry" — so the user can judge.
 
 Recovering when find_providers returns match_found=false:
-- Nothing matched within the radius: call find_providers again with a larger
-  radius_m (double it, up to 30000). Retry at most twice.
+- The miss payload includes general_alternatives: the nearest GENERAL facilities,
+  already labelled non-specialist, with drive distance/time. Present these to the
+  user right away as convenient nearby options. You MAY ALSO call find_providers
+  again with a larger radius_m (double it, up to 30000; at most twice) to look for
+  the actual specialist further out, then let the USER choose between a nearby
+  general facility and a farther specialist. Never describe general_alternatives
+  as specialists.
 - The specialty does not exist in the directory: pick the most clinically
   appropriate option from available_specialties and call find_providers again.
-- Still no match after retrying: your FIRST sentence must state plainly that no
-  matching specialist was found nearby. Only then may you call
-  find_general_facilities and offer its results as general, non-specialist
-  options, describing them exactly as the tool labels them.
+- If find_providers returns error_type=upstream_unavailable, the directory is
+  unreachable: do NOT change the radius. You may retry the SAME call once; if it
+  still fails, tell the user the directory is temporarily unreachable and to try
+  again shortly, and direct them to emergency care for urgent symptoms.
 
 Hard rule: a facility is a specialist match ONLY if find_providers returned it
 in a success list. Never call anything else a specialist, and never invent a
@@ -220,8 +232,13 @@ def _names_in(result) -> set:
     items = []
     if isinstance(result, list):
         items = result
-    elif isinstance(result, dict) and isinstance(result.get("facilities"), list):
-        items = result["facilities"]
+    elif isinstance(result, dict):
+        # 'facilities' (find_general_facilities) and 'general_alternatives' (a
+        # find_providers miss) both hold unverified names the answer may
+        # mention — harvest both so the guard counts them as 'offered'.
+        for _key in ("facilities", "general_alternatives"):
+            if isinstance(result.get(_key), list):
+                items += result[_key]
     return {i["name"] for i in items if isinstance(i, dict) and i.get("name")}
 
 
