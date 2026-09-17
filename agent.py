@@ -61,7 +61,7 @@ def _names_in(result) -> set:
         # 'facilities' (find_general_facilities) and 'general_alternatives' (a
         # find_providers miss) both hold unverified names the answer may
         # mention — harvest both so the guard counts them as 'offered'.
-        for _key in ("facilities", "general_alternatives"):
+        for _key in ("facilities", "general_alternatives", "nearest_hospitals"):
             if isinstance(result.get(_key), list):
                 items += result[_key]
     return {i["name"] for i in items if isinstance(i, dict) and i.get("name")}
@@ -167,6 +167,22 @@ TOOLS = [
         },
     },
 
+    {
+        "type": "function",
+        "function": {
+            "name": "get_emergency_help",
+            "description": "Return the LOCAL emergency number to call NOW plus the nearest hospitals (which have emergency departments). Call this FIRST for any medical emergency — seizure, stroke signs, major trauma or a serious accident, heavy bleeding, chest pain with cardiac features, fainting, or trouble breathing — before any specialty search, and lead the answer with the number.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_lat": {"type": "number", "description": "Patient latitude"},
+                    "patient_lng": {"type": "number", "description": "Patient longitude"},
+                },
+                "required": ["patient_lat", "patient_lng"],
+            },
+        },
+    },
+
 ]
 
 
@@ -176,6 +192,14 @@ Given a patient and their complaint, your job is to recommend the nearest
 appropriate healthcare providers.
 
 Reason step by step:
+0. FIRST, decide if this is a medical EMERGENCY — seizure, stroke signs (face
+   droop, slurred speech, one-sided weakness), major trauma or a serious
+   accident, heavy or uncontrolled bleeding, chest pain with cardiac features,
+   fainting or unconsciousness, or trouble breathing. If it is, call
+   get_emergency_help, and make your FIRST sentence tell the user to call the
+   returned emergency number NOW (or go to the nearest emergency department).
+   You may then list the nearest hospitals it returned. Do this before — or
+   instead of — any specialist search; speed matters more than specialty here.
 1. Decide which medical SPECIALTY the complaint requires (e.g. chest pain -> Cardiology).
    Choose the LEAST specific specialty that still fits. The provider directory is
    crowd-sourced (OpenStreetMap) and tags narrow specialties sparsely, so an
@@ -235,6 +259,7 @@ def run_agent(user_request: str, max_steps: int = 8) -> str:
     ]
 
     confirmed, offered = set(), set()
+    is_emergency = False
 
     for step in range(max_steps):
         # Reason: ask the model what to do next, giving it the tools
@@ -248,6 +273,10 @@ def run_agent(user_request: str, max_steps: int = 8) -> str:
 
         # If the model did NOT request a tool, it's done thinking -> final answer.
         if not msg.tool_calls:
+            # Emergency answers are a call-for-help, not a specialist match, so
+            # they bypass the specialist guard.
+            if is_emergency:
+                return msg.content
             return _guard_answer(msg.content, confirmed, offered)
 
         # Otherwise, record the model's tool request in the conversation...
@@ -270,6 +299,8 @@ def run_agent(user_request: str, max_steps: int = 8) -> str:
                 result = {"error": f"Tool {name} failed: {e}"}
 
             print(f"          -> {_summarize(result)}")
+            if isinstance(result, dict) and result.get("emergency"):
+                is_emergency = True
             if name == "find_providers" and isinstance(result, list):
                 confirmed |= _names_in(result)   # tool-confirmed specialists
             else:

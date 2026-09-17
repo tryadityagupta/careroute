@@ -78,6 +78,7 @@ class CareRouteState(TypedDict):
     offered_facilities: set[str]   # names from fallback / unverified results
     tool_errors: list[str]         # tools that FAILED (not: found nothing)
     llm_calls: int                 # model calls so far (the old `step`)
+    is_emergency: bool             # get_emergency_help fired -> skip specialist guard
 
 
 SYSTEM_PROMPT = """
@@ -86,6 +87,14 @@ Given a patient and their complaint, your job is to recommend the nearest
 appropriate healthcare providers.
 
 Reason step by step:
+0. FIRST, decide if this is a medical EMERGENCY — seizure, stroke signs (face
+   droop, slurred speech, one-sided weakness), major trauma or a serious
+   accident, heavy or uncontrolled bleeding, chest pain with cardiac features,
+   fainting or unconsciousness, or trouble breathing. If it is, call
+   get_emergency_help, and make your FIRST sentence tell the user to call the
+   returned emergency number NOW (or go to the nearest emergency department).
+   You may then list the nearest hospitals it returned. Do this before — or
+   instead of — any specialist search; speed matters more than specialty here.
 1. Decide which medical SPECIALTY the complaint requires (e.g. chest pain -> Cardiology).
    Choose the LEAST specific specialty that still fits. The provider directory is
    crowd-sourced (OpenStreetMap) and tags narrow specialties sparsely, so an
@@ -191,7 +200,24 @@ def find_general_facilities(
     )
 
 
-TOOLS = [get_patient_record, find_providers, find_general_facilities]
+@tool
+def get_emergency_help(
+    patient_lat: Annotated[float, "Patient latitude"],
+    patient_lng: Annotated[float, "Patient longitude"],
+) -> dict:
+    """Return the LOCAL emergency number to call NOW plus the nearest hospitals
+    (which have emergency departments). Call this FIRST for any medical
+    emergency — seizure, stroke signs, major trauma or a serious accident, heavy
+    bleeding, chest pain with cardiac features, fainting, or trouble breathing —
+    before any specialty search, and lead the answer with the number."""
+    return careroute_tools.get_emergency_help(
+        patient_lat=patient_lat,
+        patient_lng=patient_lng,
+    )
+
+
+TOOLS = [get_patient_record, find_providers, find_general_facilities,
+         get_emergency_help]
 
 llm = ChatOpenAI(model="gpt-4o-mini")  # no temperature set, matching agent.py.
 llm_with_tools = llm.bind_tools(TOOLS)
@@ -236,7 +262,7 @@ def _names_in(result) -> set:
         # 'facilities' (find_general_facilities) and 'general_alternatives' (a
         # find_providers miss) both hold unverified names the answer may
         # mention — harvest both so the guard counts them as 'offered'.
-        for _key in ("facilities", "general_alternatives"):
+        for _key in ("facilities", "general_alternatives", "nearest_hospitals"):
             if isinstance(result.get(_key), list):
                 items += result[_key]
     return {i["name"] for i in items if isinstance(i, dict) and i.get("name")}
@@ -334,11 +360,14 @@ def tools(state: CareRouteState):
     confirmed = set(state.get("confirmed_providers") or ())
     offered = set(state.get("offered_facilities") or ())
     errors = list(state.get("tool_errors") or ())
+    is_emergency = bool(state.get("is_emergency"))
     for msg in result["messages"]:
         if not isinstance(msg, ToolMessage):
             continue
         payload = _payload(msg)
         print(f"          -> {_summarize(payload)}")
+        if isinstance(payload, dict) and payload.get("emergency"):
+            is_emergency = True               # emergency answers skip the guard
         if isinstance(payload, dict) and "error" in payload:
             errors.append(f"{msg.name}: {payload['error']}")
         elif msg.name == "find_providers" and isinstance(payload, list):
@@ -351,6 +380,7 @@ def tools(state: CareRouteState):
         "confirmed_providers": confirmed,
         "offered_facilities": offered,
         "tool_errors": errors,
+        "is_emergency": is_emergency,
     }
 
 
@@ -363,6 +393,10 @@ def guard(state: CareRouteState):
     """
     final = state["messages"][-1]
     answer = _text(final)
+    # An emergency answer is a call-for-help + hospitals, not a specialist
+    # recommendation, so the specialist guard must not rewrite it.
+    if state.get("is_emergency"):
+        return {}
     guarded = _guard_answer(
         answer,
         state.get("confirmed_providers") or set(),

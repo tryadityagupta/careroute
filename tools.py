@@ -10,6 +10,7 @@ The docstrings are written for a reader who is the model — they explain WHEN t
 use each tool. We feed these descriptions to the model so it can choose.
 """
 
+from emergency import get_emergency_help  # always available, all backends
 import json
 import os
 from math import radians, sin, cos, sqrt, atan2
@@ -157,10 +158,12 @@ else:
 print(f"[tools] find_providers backend: {_BACKEND}")
 
 # A registry so the agent loop can look up a tool by name and call it.
+
 TOOL_REGISTRY = {
     "get_patient_record": get_patient_record,
     "find_providers": find_providers,
     "find_general_facilities": find_general_facilities,
+    "get_emergency_help": get_emergency_help,
 }
 
 
