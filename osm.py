@@ -14,14 +14,16 @@ healthcare:speciality=cardiology. Two bugs came out of that:
      back to nearest-anything — which is how a dental clinic got recommended
      for anxiety attacks. Fixed by FILTERING.
 
-  2. The first fix returned the nearest general facilities INSIDE the miss
-     payload, "for context". The model listed them as specialists anyway,
-     despite a prompt instruction not to. Fixed structurally: a miss now
-     carries a COUNT, never names. If the model wants general facilities it
-     must deliberately call find_general_facilities, whose results are
-     labelled as non-specialist at the item level.
+  2. Returning the nearest general facilities INSIDE the miss payload "for
+     context" once caused the model to list them as specialists. The current
+     design re-surfaces them (users want nearby options immediately) but makes
+     the labelling ENFORCED, not advisory: each carries is_specialist_match=
+     false under 'general_alternatives', and the answer guard harvests those
+     names into 'offered' (unverified), so a bare list can never be presented
+     as confirmed specialists.
 
-Lesson: a prompt instruction is advisory; a data structure is enforced.
+Lesson: a prompt instruction is advisory; a data structure — and a code guard —
+is enforced.
 """
 
 import json
@@ -30,6 +32,8 @@ import time
 from math import radians, sin, cos, sqrt, atan2
 
 import requests
+
+from routing import annotate_road_distance
 
 # Free public instances with GLOBAL coverage, from the OSM wiki's instance
 # table. NOTE: overpass.kumi.systems is just the OLD NAME of the
@@ -47,6 +51,13 @@ _OVERPASS_ENDPOINTS = [
 # a hallucinated radius_m=9999999 can't hammer Overpass or blow the timeout.
 _MIN_RADIUS_M = 500
 _MAX_RADIUS_M = 30000
+
+# Fix C: on a transient outage, retry the SAME radius a couple of times with a
+# short backoff rather than escalating — a bigger query only makes an overloaded
+# server likelier to fail. Correctness never depends on this; only availability.
+_FETCH_ROUNDS = 2
+_RETRY_BACKOFF_S = 2
+_HTTP_TIMEOUT_S = 20
 
 # ---------------------------------------------------------------------------
 # LOCAL FETCH CACHE — because every public Overpass instance is a shared,
@@ -140,25 +151,34 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
     else:
         headers = {"User-Agent": "CareRoute-demo/1.0 (learning project)"}
         last_error = None
-        for url in _OVERPASS_ENDPOINTS:
-            try:
-                resp = requests.post(url, data={"data": query},
-                                     headers=headers, timeout=30)
-                resp.raise_for_status()
-                # .json() stays inside the try: a mirror answering 200 with an
-                # HTML error page falls through to the next mirror instead of
-                # crashing the tool.
-                elements = resp.json().get("elements", [])
-                _CACHE[key] = {"fetched_at": now, "elements": elements}
-                _cache_save()
+        # Fix C: one pass over the mirrors, and if all fail transiently, back off
+        # briefly and try the SAME query again before declaring an outage — never
+        # a larger radius.
+        for round_i in range(_FETCH_ROUNDS):
+            if round_i:
+                time.sleep(_RETRY_BACKOFF_S)
+                print(
+                    f"[osm] retry round {round_i + 1} (same radius {radius_m} m)")
+            for url in _OVERPASS_ENDPOINTS:
+                try:
+                    resp = requests.post(url, data={"data": query},
+                                         headers=headers, timeout=_HTTP_TIMEOUT_S)
+                    resp.raise_for_status()
+                    # .json() stays inside the try: a mirror answering 200 with
+                    # an HTML error page falls through to the next mirror instead
+                    # of crashing the tool.
+                    elements = resp.json().get("elements", [])
+                    _CACHE[key] = {"fetched_at": now, "elements": elements}
+                    _cache_save()
+                    break
+                except requests.RequestException as e:
+                    last_error = e
+                    # str(e) shows the actual reason — "429 Client Error" (rate
+                    # limited) vs "504 Server Error" (overloaded) vs "Read timed
+                    # out" — so an outage is diagnosable from the log alone.
+                    print(f"[osm] {url} failed: {str(e)[:90]}")
+            if elements is not None:
                 break
-            except requests.RequestException as e:
-                last_error = e
-                # str(e) shows the actual reason — "429 Client Error" (rate
-                # limited, back off 30 s per the usage policy) vs "504 Server
-                # Error" (overloaded) vs "Read timed out" — so an outage is
-                # diagnosable from the log alone.
-                print(f"[osm] {url} failed: {str(e)[:90]}")
 
         if elements is None and hit:
             # stale-if-error: every mirror is down, but we have seen this
@@ -179,11 +199,12 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
                 "error": f"Provider directory unreachable: {last_error}",
                 "error_type": "upstream_unavailable",
                 "hint": ("The directory could not be reached, so nothing is known "
-                         "about which providers exist. Do NOT retry with a different "
-                         "radius_m — the radius is not the problem. Do NOT say that "
-                         "no specialists were found. Tell the user the provider "
-                         "directory is temporarily unreachable and to try again "
-                         "shortly; for urgent symptoms, direct them to emergency care."),
+                         "about which providers exist. Do NOT change radius_m — the "
+                         "radius is not the problem. You may retry the SAME call "
+                         "once. Do NOT say that no specialists were found. Tell the "
+                         "user the provider directory is temporarily unreachable and "
+                         "to try again shortly; for urgent symptoms, direct them to "
+                         "emergency care."),
             }
 
     stem = _stem(specialty) if specialty else None
@@ -247,8 +268,9 @@ def find_providers(specialty: str, patient_lat: float, patient_lng: float,
     """Find the k nearest REAL facilities MATCHING a specialty via OpenStreetMap.
 
     Returns a list of confirmed specialty matches on success. On a miss returns
-    a dict with match_found=False and a COUNT of nearby general facilities —
-    deliberately NOT their names, so they cannot be passed off as specialists.
+    a dict with match_found=False plus general_alternatives: the nearest general
+    facilities, each labelled is_specialist_match=false, so the user gets nearby
+    options immediately without them being passed off as specialists.
     """
     radius_m = _clamp_radius(radius_m)
     facilities, err = _fetch_nearby(
@@ -265,21 +287,52 @@ def find_providers(specialty: str, patient_lat: float, patient_lng: float,
         matches.sort(key=lambda f: (f.get("matched_via") != "name",
                                     f.get("_tag_tokens", 0),
                                     f["distance_km"]))
-        top = matches[:k]
+        # Take a small shortlist on the cheap straight-line sort, then upgrade
+        # JUST those to real road distance + ETA (one OSRM call). Re-rank with
+        # the same key so evidence quality still leads and road distance is the
+        # tie-break — and the distance we DISPLAY is now what a user will drive.
+        shortlist = matches[:max(k + 4, 8)]
+        annotate_road_distance(patient_lat, patient_lng, shortlist)
+        shortlist.sort(key=lambda f: (f.get("matched_via") != "name",
+                                      f.get("_tag_tokens", 0),
+                                      f["distance_km"]))
+        top = shortlist[:k]
         for f in top:
             f.pop("_tag_tokens", None)
         return top
 
+    # No specialty match at this radius. Instead of a bare count, hand back the
+    # nearest GENERAL facilities right now (labelled non-specialist, with road
+    # distance) so a minor complaint isn't forced to chase a far specialist —
+    # the agent can still widen the radius for the real specialist and let the
+    # user choose. Names live under 'general_alternatives' and carry
+    # is_specialist_match=false, so the answer guard counts them as OFFERED
+    # (unverified), never confirmed specialists.
+    alternatives = _dedupe(facilities)[:3]
+    annotate_road_distance(patient_lat, patient_lng, alternatives)
+    alternatives = [{"name": f["name"], "facility": f["facility"],
+                     "distance_km": f["distance_km"],
+                     "duration_min": f.get("duration_min"),
+                     "distance_type": f.get("distance_type"),
+                     "is_specialist_match": False}
+                    for f in alternatives]
     return {
         "match_found": False,
+        "specialty_requested": specialty,
         "reason": f"No facility matching '{specialty}' within {radius_m / 1000:.1f} km.",
         "radius_searched_m": radius_m,
-        "general_facilities_nearby": len(facilities),  # a COUNT, never names
-        "hint": ("Retry with a larger radius_m (double it, up to 30000). If it "
-                 "still misses, tell the user plainly that no matching "
-                 "specialist was found. You may call find_general_facilities "
-                 "to offer non-specialist options, but you must not describe "
-                 "anything it returns as a specialist."),
+        "general_facilities_nearby": len(facilities),
+        "general_alternatives": alternatives,
+        "general_alternatives_disclaimer": (
+            f"These are the nearest GENERAL facilities, NOT {specialty} "
+            "specialists. Offer them as convenient nearby options — the user may "
+            "prefer one over travelling far for a specialist."),
+        "hint": ("Do BOTH: (1) show general_alternatives to the user as nearby "
+                 "general options with their drive distance/time; (2) you MAY "
+                 "call find_providers again with a larger radius_m (double it, up "
+                 "to 30000, at most twice) to look for an actual specialist "
+                 "further out, then let the user choose. Never describe "
+                 "general_alternatives as specialists."),
     }
 
 
@@ -300,12 +353,17 @@ def find_general_facilities(patient_lat: float, patient_lng: float,
                 "reason": f"No healthcare facilities at all within {radius_m / 1000:.1f} km."}
 
     facilities = _dedupe(facilities)
-    for f in facilities[:k]:
+    # Shortlist on straight-line, upgrade to road distance, then re-rank.
+    shortlist = facilities[:max(k + 4, 8)]
+    annotate_road_distance(patient_lat, patient_lng, shortlist)
+    shortlist.sort(key=lambda f: f["distance_km"])
+    top = shortlist[:k]
+    for f in top:
         f["is_specialist_match"] = False
     return {
         "disclaimer": ("These are general healthcare facilities, NOT verified "
                        "specialists. Present them only as general options."),
-        "facilities": facilities[:k],
+        "facilities": top,
     }
 
 
