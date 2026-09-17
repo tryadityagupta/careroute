@@ -152,6 +152,85 @@
             color: var(--muted-2);
         }
 
+        .text-field {
+            width: 100%;
+            font: inherit;
+            color: var(--ink);
+            background: var(--field);
+            border: 1.5px solid var(--line);
+            border-radius: 10px;
+            padding: 11px 14px;
+        }
+
+        .text-field::placeholder {
+            color: var(--muted-2);
+        }
+
+        .text-field:focus-visible {
+            outline: none;
+            border-color: var(--orange);
+            box-shadow: 0 0 0 4px rgba(221, 84, 16, .14);
+        }
+
+        .opt {
+            color: var(--muted-2);
+            font-weight: 400;
+        }
+
+        .field-label.sm {
+            font-size: 0.88rem;
+            font-weight: 500;
+            color: var(--muted);
+        }
+
+        .opt-details {
+            margin-top: 16px;
+            padding-top: 6px;
+            border-top: 1px dashed var(--line);
+        }
+
+        .opt-details>summary {
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 6px 0;
+            font-size: 0.9rem;
+            color: var(--muted);
+            user-select: none;
+        }
+
+        .opt-details>summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .opt-details>summary::before {
+            content: "+";
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            flex: none;
+            border: 1.5px solid var(--muted-2);
+            border-radius: 6px;
+            font-weight: 600;
+            line-height: 1;
+        }
+
+        .opt-details[open]>summary::before {
+            content: "\2212";
+        }
+
+        .opt-details>summary:hover {
+            color: var(--ink);
+        }
+
+        .opt-body {
+            margin-top: 10px;
+        }
+
         textarea:focus-visible,
         .coord:focus-visible {
             outline: none;
@@ -291,6 +370,14 @@
             color: var(--ink);
         }
 
+        .answer.is-results code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.92em;
+            background: var(--tint);
+            padding: 1px 5px;
+            border-radius: 5px;
+        }
+
         .dots {
             display: inline-flex;
             gap: 5px;
@@ -399,6 +486,18 @@
                 <span class="loc" id="locStatus" data-state="off">Location not shared</span>
             </div>
 
+            <details class="opt-details">
+                <summary>Add your name &amp; medication history <span class="opt">(optional)</span></summary>
+                <div class="opt-body">
+                    <label class="field-label sm" for="pname">Your name</label>
+                    <input class="text-field" id="pname" placeholder="e.g. Ramesh Kumar">
+                    <label class="field-label sm" for="pmeds" style="margin-top:12px">Current medications or
+                        history</label>
+                    <textarea id="pmeds" style="min-height:64px"
+                        placeholder="e.g. on blood thinners; type 2 diabetes"></textarea>
+                </div>
+            </details>
+
             <div class="manual">
                 <span>Location off? Enter it by hand:</span>
                 lat <input class="coord" id="lat" inputmode="decimal" placeholder="12.9352">
@@ -419,9 +518,26 @@
         const $ = id => document.getElementById(id);
         const answerEl = $("answer");
 
-        function setAnswer(state, text) {
+        // Escape HTML so nothing in a model/tool response can inject markup.
+        function escapeHtml(s) {
+            return s.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+        }
+
+        // Tiny, safe Markdown renderer for the small subset the model emits:
+        // **bold**, *italic*, `code`. HTML is escaped FIRST, so model output can
+        // never inject tags; line breaks stay handled by white-space: pre-wrap.
+        function renderMarkdown(md) {
+            return escapeHtml(md)
+                .replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
+                .replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, "$1<em>$2</em>")
+                .replace(/`([^`]+?)`/g, "<code>$1</code>");
+        }
+
+        function setAnswer(state, text, isMarkdown) {
             answerEl.className = "answer " + state;
-            if (text !== undefined) answerEl.textContent = text;
+            if (text === undefined) return;
+            if (isMarkdown) answerEl.innerHTML = renderMarkdown(text);
+            else answerEl.textContent = text;
         }
 
         function setLoc(kind, text) {
@@ -446,6 +562,8 @@
 
         $("go").addEventListener("click", async () => {
             const symptoms = $("symptoms").value.trim();
+            const name = $("pname").value.trim();
+            const meds = $("pmeds").value.trim();
             const lat = parseFloat($("lat").value);
             const lng = parseFloat($("lng").value);
 
@@ -469,12 +587,12 @@
                 const res = await fetch("/care", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ symptoms, lat, lng })
+                    body: JSON.stringify({ symptoms, lat, lng, name, meds })
                 });
                 const data = await res.json();
                 const answer = (data.answer || "").trim();
                 if (answer) {
-                    setAnswer("is-results", answer);
+                    setAnswer("is-results", answer, true);
                 } else {
                     setAnswer("is-empty", "No providers came back. Try describing your symptoms a little differently.");
                 }

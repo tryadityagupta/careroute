@@ -34,6 +34,8 @@ class CareRequest(BaseModel):
     symptoms: str
     lat: float
     lng: float
+    name: str | None = None
+    meds: str | None = None
 
 
 @app.get("/")
@@ -48,15 +50,18 @@ def home():
 def care(req: CareRequest):
     # Register the live user as a synthetic patient so get_patient_record works
     # unchanged. "LIVE" is fine for a single-user demo; multi-user would need a
-    # unique id per request (last-writer-wins otherwise).
+    # unique id per request (last-writer-wins otherwise). Name and medications
+    # are OPTIONAL — empty fields fall back to the anonymous behaviour.
+    meds_list = [m.strip() for m in (req.meds or "").replace("\n", ",").split(",")
+                 if m.strip()]
     tools._PATIENTS["LIVE"] = {
         "patient_id": "LIVE",
-        "name": "Live user",
+        "name": (req.name or "").strip() or "Live user",
         "area": "Current location",
         "lat": req.lat,
         "lng": req.lng,
         "history": [],
-        "current_medications": [],
+        "current_medications": meds_list,
     }
 
     user_request = (
