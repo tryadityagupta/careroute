@@ -4,3 +4,7 @@ __pycache__/
 venv/
 careroute_notes_and_interview_qa.md
 data/osm_cache.json
+oop.py
+body.json
+data/geo_cache.json
+synthea_sample_data_csv_latest/
