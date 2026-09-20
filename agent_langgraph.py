@@ -32,6 +32,7 @@ server.py switches engines by changing one line:
     from agent_langgraph import run_agent
 """
 
+import threading as _threading  # used only by the lazy initialiser below
 import json
 import re
 from typing import Annotated, TypedDict
@@ -110,6 +111,21 @@ Reason step by step:
    If a provider matched only via its OSM speciality tag (matched_via =
    "speciality_tag"), say what kind of facility it actually is — e.g. "a
    multi-speciality clinic that lists psychiatry" — so the user can judge.
+
+Obtaining a medicine (not a diagnosis): if the user wants to BUY or pick up a
+medicine or over-the-counter drug — painkillers, antacids, ORS, cold medicine,
+etc. — the right provider is a PHARMACY. Call find_pharmacies (after
+get_patient_record for the location) and list the nearest ones with distance.
+You are ROUTING to a provider, not prescribing: never recommend a specific
+medicine, dose, or brand, and never present a hospital or clinic as a pharmacy.
+If find_pharmacies returns match_found=false, say no pharmacy was found in the
+map data nearby.
+
+Each message is its own request: in a conversation a new turn may add detail to
+the earlier complaint OR raise a NEW need (e.g. "now I need painkillers"). Run
+the search that fits THIS turn — do not just re-read the record and repeat the
+previous list.
+
 
 Recovering when find_providers returns match_found=false:
 - The miss payload includes general_alternatives: the nearest GENERAL facilities,
@@ -201,6 +217,27 @@ def find_general_facilities(
 
 
 @tool
+def find_pharmacies(
+    patient_lat: Annotated[float, "Patient latitude"],
+    patient_lng: Annotated[float, "Patient longitude"],
+    k: Annotated[int, "How many pharmacies to return (default 3)"] = 3,
+    radius_m: Annotated[int, "Search radius in metres (default 8000)"] = 8000,
+) -> dict:
+    """Nearest PHARMACIES / chemists — where a user goes to OBTAIN medicines.
+    Call this when the user wants to buy or pick up a medicine or OTC drug
+    (painkillers, antacids, ORS, cold medicine, etc.). You are routing them to a
+    provider, NOT prescribing: do not recommend a specific medicine, dose, or
+    brand. Returns match_found=false when no pharmacy is mapped nearby — if so,
+    say that plainly and never substitute a hospital or clinic for a pharmacy."""
+    return careroute_tools.find_pharmacies(
+        patient_lat=patient_lat,
+        patient_lng=patient_lng,
+        k=k,
+        radius_m=radius_m,
+    )
+
+
+@tool
 def get_emergency_help(
     patient_lat: Annotated[float, "Patient latitude"],
     patient_lng: Annotated[float, "Patient longitude"],
@@ -217,7 +254,7 @@ def get_emergency_help(
 
 
 TOOLS = [get_patient_record, find_providers, find_general_facilities,
-         get_emergency_help]
+         find_pharmacies, get_emergency_help]
 
 llm = ChatOpenAI(model="gpt-4o-mini")  # no temperature set, matching agent.py.
 llm_with_tools = llm.bind_tools(TOOLS)
@@ -477,6 +514,89 @@ def run_agent(user_request: str) -> str:
         "tool_errors": [],
         "llm_calls": 0,
     })
+    return _text(final_state["messages"][-1])
+
+
+# ---------------------------------------------------------------------------
+# 7) MULTI-TURN API — the SAME graph, compiled with a checkpointer so a
+# conversation can span several HTTP requests. Everything above (app, run_agent,
+# the state, the nodes) is left EXACTLY as it was, so the offline test harness
+# and single-shot callers are untouched — this section is purely additive.
+#
+# HOW IT WORKS
+#   * conversation_app is the identical graph compiled with a MemorySaver.
+#   * Each conversation has a thread_id; the checkpointer stores that thread's
+#     full state (transcript + tracking sets) between calls, so a later turn
+#     sees the earlier turns and the model has real context.
+#   * The agent node injects the system prompt fresh every turn and never saves
+#     it into state, so a prompt change can't invalidate a live conversation.
+#
+# PER-TURN vs PER-CONVERSATION STATE (the one subtlety worth explaining):
+#   * llm_calls, tool_errors, is_emergency are RESET at the start of each turn —
+#     the step budget, "did a tool fail", and "is this an emergency" are about
+#     THIS turn, not the whole conversation.
+#   * confirmed_providers / offered_facilities are NOT reset — a provider name
+#     backed by a real earlier tool call stays trusted, so re-mentioning it in a
+#     later answer is not treated as a hallucination by the guard.
+#
+# SCALING CAVEAT (interview point): MemorySaver keeps threads in process memory,
+# so conversations live on ONE replica and are lost on restart. For multi-replica
+# or durable history, swap MemorySaver for a DB-backed saver (SqliteSaver /
+# PostgresSaver) — same graph, different checkpointer.
+# ---------------------------------------------------------------------------
+
+_conversation_app = None
+_conv_lock = _threading.Lock()
+
+
+def _get_conversation_app():
+    """Compile the graph WITH a checkpointer once, on first use.
+
+    Lazy on purpose: importing this module (as the offline test harness does)
+    must never depend on the checkpointer import resolving, so the deploy gate
+    can't be broken by a langgraph whose import path differs. Double-checked
+    locking keeps two concurrent first-callers from building two savers.
+    """
+    global _conversation_app
+    if _conversation_app is None:
+        with _conv_lock:
+            if _conversation_app is None:
+                try:
+                    from langgraph.checkpoint.memory import MemorySaver
+                except ImportError:  # older/newer layout
+                    from langgraph.checkpoint import MemorySaver  # type: ignore
+                _conversation_app = builder.compile(checkpointer=MemorySaver())
+    return _conversation_app
+
+
+def continue_conversation(user_message: str, thread_id: str) -> str:
+    """Run ONE turn of a multi-turn conversation identified by thread_id.
+
+    First turn for a thread: seed the full initial state. Later turns: pass only
+    the new message plus the per-turn resets, so the checkpointer's accumulated
+    state (transcript + confirmed providers) is preserved and built upon.
+    """
+    conv = _get_conversation_app()
+    config = {"configurable": {"thread_id": thread_id}}
+
+    # A brand-new thread has empty .values; an existing one has state to build on.
+    try:
+        existing = bool(conv.get_state(config).values)
+    except Exception:
+        existing = False
+
+    turn = {
+        "messages": [HumanMessage(content=user_message)],
+        "llm_calls": 0,        # fresh step budget each turn
+        "tool_errors": [],     # only this turn's tool failures matter
+        "is_emergency": False,  # re-decide emergency per turn
+    }
+    if not existing:
+        # New conversation — initialise the accumulating trackers too.
+        turn["confirmed_providers"] = set()
+        turn["offered_facilities"] = set()
+
+    final_state = conv.invoke(turn, config=config)
     return _text(final_state["messages"][-1])
 
 

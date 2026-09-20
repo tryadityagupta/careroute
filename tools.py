@@ -142,16 +142,30 @@ def find_general_facilities(patient_lat: float, patient_lng: float,
     }
 
 
+def find_pharmacies(patient_lat: float, patient_lng: float,
+                    k: int = 3, radius_m: int = 8000) -> dict:
+    """Nearest pharmacies — the dummy backend has no pharmacy data.
+
+    The demo JSON is a provider directory, not a pharmacy directory, so this is
+    honest about having nothing rather than pointing at a clinic. Real pharmacy
+    lookup lives in the osm/google backends (USE_REAL_PROVIDERS).
+    """
+    return {
+        "match_found": False,
+        "reason": "Pharmacy lookup needs a real backend (USE_REAL_PROVIDERS=osm or google).",
+    }
+
+
 # Swap to a REAL provider lookup by setting USE_REAL_PROVIDERS. This rebinds
 # find_providers to the real implementation (identical signature), so agent.py
 # and the registry below DON'T change — that's the interface lesson: the agent
 # can't tell the data source changed.
 _provider_mode = os.getenv("USE_REAL_PROVIDERS", "").lower()
 if _provider_mode in ("google", "1"):
-    from places import find_providers, find_general_facilities  # noqa: F811
+    from places import find_providers, find_general_facilities, find_pharmacies  # noqa: F811
     _BACKEND = "google-places"
 elif _provider_mode == "osm":
-    from osm import find_providers, find_general_facilities      # noqa: F811
+    from osm import find_providers, find_general_facilities, find_pharmacies      # noqa: F811
     _BACKEND = "openstreetmap"
 else:
     _BACKEND = "dummy-json"
@@ -163,6 +177,7 @@ TOOL_REGISTRY = {
     "get_patient_record": get_patient_record,
     "find_providers": find_providers,
     "find_general_facilities": find_general_facilities,
+    "find_pharmacies": find_pharmacies,
     "get_emergency_help": get_emergency_help,
 }
 

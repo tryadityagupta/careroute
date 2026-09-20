@@ -152,6 +152,60 @@ def find_general_facilities(patient_lat: float, patient_lng: float,
     }
 
 
+def find_pharmacies(patient_lat: float, patient_lng: float,
+                    k: int = 3, radius_m: int = 8000) -> dict:
+    """Nearest pharmacies / chemists — where a user goes to OBTAIN medicines.
+
+    Use for requests to buy or pick up a medicine or OTC drug. Same shape as the
+    OSM backend's find_pharmacies: a 'pharmacies' list on success, or
+    match_found=false when none are found — never a hospital in disguise.
+    """
+    if not GOOGLE_KEY:
+        return {"error": "GOOGLE_MAPS_API_KEY not set"}
+
+    radius_m = max(500, min(int(radius_m), _MAX_RADIUS_M))
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_KEY,
+        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location",
+    }
+    body = {
+        "textQuery": "pharmacy or chemist",
+        "locationBias": {"circle": {
+            "center": {"latitude": patient_lat, "longitude": patient_lng},
+            "radius": float(radius_m)}},
+        "maxResultCount": 10,
+    }
+    try:
+        resp = requests.post(
+            _TEXT_SEARCH_URL, headers=headers, json=body, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        return {"error": f"Places API call failed: {e}"}
+
+    results = []
+    for p in resp.json().get("places", []):
+        loc = p.get("location", {})
+        lat, lng = loc.get("latitude"), loc.get("longitude")
+        if lat is None or lng is None:
+            continue
+        results.append({
+            "name": p.get("displayName", {}).get("text", "Unknown"),
+            "facility": p.get("formattedAddress", ""),
+            "distance_km": _haversine_km(patient_lat, patient_lng, lat, lng),
+            "is_pharmacy": True,
+        })
+    if not results:
+        return {"match_found": False,
+                "reason": f"No pharmacy found within {radius_m / 1000:.1f} km.",
+                "hint": "Do NOT offer a hospital or clinic as a pharmacy."}
+    results.sort(key=lambda x: x["distance_km"])
+    return {
+        "disclaimer": "Nearby pharmacies/chemists for obtaining medicines.",
+        "pharmacies": results[:k],
+    }
+
+
 if __name__ == "__main__":
     # Patient P001 is in Koramangala. Needs a real key + billing to run.
     out = find_providers("Cardiology", 12.9352, 77.6245, k=3)

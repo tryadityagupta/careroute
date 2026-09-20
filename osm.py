@@ -96,11 +96,17 @@ def _cache_save() -> None:
         print(f"[osm] cache write failed (non-fatal): {e}")
 
 
+# Bump this whenever the Overpass QUERY below changes shape. It is part of the
+# cache key, so a query change auto-invalidates every stale entry (fetched with
+# the old, narrower query) instead of serving week-old results.
+_QUERY_VERSION = 3
+
+
 def _cache_key(lat: float, lng: float, radius_m: int) -> str:
     # 2 decimal places ~= 1.1 km grid cells: nearby users share a fetch. A
     # user just across a cell boundary merely triggers one extra fetch —
     # never a wrong answer, because distances are recomputed per caller.
-    return f"{lat:.2f},{lng:.2f},r{int(radius_m)}"
+    return f"v{_QUERY_VERSION}|{lat:.2f},{lng:.2f},r{int(radius_m)}"
 
 
 _CACHE = _cache_load()
@@ -133,11 +139,24 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
     Both find_providers and find_general_facilities use this, so the query,
     the cache, and the distance math live in exactly one place.
     """
+    # Two tagging schemes, because OSM uses both and small Indian clinics and
+    # chemists are split across them:
+    #   * amenity=hospital|clinic|doctors|pharmacy — the classic scheme.
+    #   * healthcare=*  — the newer scheme (healthcare=clinic|doctor|hospital|
+    #     pharmacy|dentist|...). A place tagged ONLY healthcare=clinic is invisible
+    #     to an amenity-only query even though it sits in OSM.
+    # pharmacy is included so "I need medicines now" can surface a chemist.
+    # Overpass dedupes the union by element id, so a POI carrying both keys is
+    # returned once.
     query = f"""
     [out:json][timeout:25];
     (
-      node["amenity"~"hospital|clinic|doctors"](around:{radius_m},{patient_lat},{patient_lng});
-      way["amenity"~"hospital|clinic|doctors"](around:{radius_m},{patient_lat},{patient_lng});
+      node["amenity"~"hospital|clinic|doctors|pharmacy"](around:{radius_m},{patient_lat},{patient_lng});
+      way["amenity"~"hospital|clinic|doctors|pharmacy"](around:{radius_m},{patient_lat},{patient_lng});
+      node["healthcare"](around:{radius_m},{patient_lat},{patient_lng});
+      way["healthcare"](around:{radius_m},{patient_lat},{patient_lng});
+      node["shop"~"chemist|pharmacy"](around:{radius_m},{patient_lat},{patient_lng});
+      way["shop"~"chemist|pharmacy"](around:{radius_m},{patient_lat},{patient_lng});
     );
     out center tags;
     """
@@ -216,13 +235,35 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
         lng = el.get("lon") or el.get("center", {}).get("lon")
         if lat is None or lng is None:
             continue
-        name = tags.get("name", "Unnamed facility")
+        name = tags.get("name")
+        # Skip POIs with no name. The broadened query surfaces bare
+        # healthcare=* nodes (unnamed labs/clinics); "go to Unnamed
+        # Facility" is not actionable, and one even ranked #1 by
+        # distance. A place you cannot name cannot be recommended.
+        if not name:
+            continue
+        amenity = (tags.get("amenity") or "").lower()
+        healthcare = (tags.get("healthcare") or "").lower()
+        shop = (tags.get("shop") or "").lower()
+        # A lowered blob of the signals that reveal what a place IS. Used to
+        # spot pharmacies and to filter narrow cosmetic/single-specialty clinics
+        # out of GENERAL lists. "_"-prefixed so it is stripped before the
+        # payload reaches the model.
+        signal = " ".join((name.lower(), amenity, healthcare, shop,
+                           tags.get("healthcare:speciality", "").lower()))
+        is_pharmacy = ("pharmacy" in amenity or "pharmacy" in healthcare
+                       or shop in ("chemist", "pharmacy"))
         item = {
             "name": name,
-            "facility": tags.get("amenity", "healthcare"),
+            # Prefer amenity, then healthcare, then shop, so a place tagged only
+            # healthcare=clinic or shop=chemist still shows a useful type.
+            "facility": (tags.get("amenity") or tags.get("healthcare")
+                         or tags.get("shop") or "healthcare"),
             "lat": lat,
             "lng": lng,
             "distance_km": _haversine_km(patient_lat, patient_lng, lat, lng),
+            "is_pharmacy": is_pharmacy,
+            "_signal": signal,
         }
         if stem:
             # Bengaluru OSM facilities often carry healthcare:speciality as a
@@ -263,6 +304,25 @@ def _dedupe(items):
     return out
 
 
+# Narrow, mostly-cosmetic single-specialty clinics that cannot serve a general/
+# undifferentiated complaint. find_general_facilities runs only AFTER the
+# specialist search already failed, so a skin/hair/laser/dental/eye boutique
+# next door is noise, not a useful "general" option (a hair clinic kept getting
+# suggested for diarrhoea). Drop these from general lists — never from
+# specialist results, and never a pharmacy (a chemist is useful for OTC needs).
+_NARROW_SPECIALTY = (
+    "skin", "hair", "laser", "cosmetic", "aesthetic", "derma",
+    "dental", "dentist", "orthodont", "ophthal", "optical", "optician",
+    "fertility", "ivf", "veterinary",
+)
+
+
+def _is_narrow_specialty(item) -> bool:
+    if item.get("is_pharmacy") or "hospital" in (item.get("facility") or ""):
+        return False  # pharmacies and full hospitals are always broad enough
+    return any(kw in item.get("_signal", "") for kw in _NARROW_SPECIALTY)
+
+
 def find_providers(specialty: str, patient_lat: float, patient_lng: float,
                    k: int = 3, radius_m: int = 8000) -> list | dict:
     """Find the k nearest REAL facilities MATCHING a specialty via OpenStreetMap.
@@ -299,6 +359,7 @@ def find_providers(specialty: str, patient_lat: float, patient_lng: float,
         top = shortlist[:k]
         for f in top:
             f.pop("_tag_tokens", None)
+            f.pop("_signal", None)
         return top
 
     # No specialty match at this radius. Instead of a bare count, hand back the
@@ -308,7 +369,11 @@ def find_providers(specialty: str, patient_lat: float, patient_lng: float,
     # user choose. Names live under 'general_alternatives' and carry
     # is_specialist_match=false, so the answer guard counts them as OFFERED
     # (unverified), never confirmed specialists.
-    alternatives = _dedupe(facilities)[:3]
+    # Drop narrow cosmetic/single-specialty clinics from the nearby general
+    # options (a hair clinic is not a useful alternative for an unrelated
+    # complaint); keep them only if that would otherwise leave nothing.
+    _general = [f for f in _dedupe(facilities) if not _is_narrow_specialty(f)]
+    alternatives = (_general or _dedupe(facilities))[:3]
     annotate_road_distance(patient_lat, patient_lng, alternatives)
     alternatives = [{"name": f["name"], "facility": f["facility"],
                      "distance_km": f["distance_km"],
@@ -353,6 +418,12 @@ def find_general_facilities(patient_lat: float, patient_lng: float,
                 "reason": f"No healthcare facilities at all within {radius_m / 1000:.1f} km."}
 
     facilities = _dedupe(facilities)
+    # Drop narrow cosmetic/single-specialty clinics — a skin/hair/laser boutique
+    # can't help with an undifferentiated complaint, and proximity alone kept
+    # surfacing them (a hair clinic for diarrhoea). Keep them only if filtering
+    # would leave nothing, so we never return empty when facilities exist.
+    _general = [f for f in facilities if not _is_narrow_specialty(f)]
+    facilities = _general or facilities
     # Shortlist on straight-line, upgrade to road distance, then re-rank.
     shortlist = facilities[:max(k + 4, 8)]
     annotate_road_distance(patient_lat, patient_lng, shortlist)
@@ -360,10 +431,47 @@ def find_general_facilities(patient_lat: float, patient_lng: float,
     top = shortlist[:k]
     for f in top:
         f["is_specialist_match"] = False
+        f.pop("_signal", None)
     return {
         "disclaimer": ("These are general healthcare facilities, NOT verified "
                        "specialists. Present them only as general options."),
         "facilities": top,
+    }
+
+
+def find_pharmacies(patient_lat: float, patient_lng: float,
+                    k: int = 3, radius_m: int = 8000) -> list | dict:
+    """Nearest PHARMACIES / chemists — where a user goes to OBTAIN medicines.
+
+    Use this for requests to buy or pick up a medicine or OTC drug (painkillers,
+    antacids, ORS, cold medicine, etc.). Reuses the same Overpass fetch, then
+    keeps only pharmacy/chemist results. Returns match_found=false — NOT a
+    hospital — when no pharmacy is mapped nearby, so the user gets an honest
+    "none in our data" instead of a hospital in disguise.
+    """
+    radius_m = _clamp_radius(radius_m)
+    facilities, err = _fetch_nearby(patient_lat, patient_lng, radius_m)
+    if err:
+        return err
+    pharmacies = _dedupe([f for f in facilities if f.get("is_pharmacy")])
+    if not pharmacies:
+        return {
+            "match_found": False,
+            "reason": (f"No pharmacy is mapped in OpenStreetMap within "
+                       f"{radius_m / 1000:.1f} km of the patient."),
+            "hint": ("Do NOT offer a hospital or clinic as a pharmacy. Tell the "
+                     "user no pharmacy was found in the map data nearby; suggest "
+                     "they widen the search or check locally."),
+        }
+    shortlist = pharmacies[:max(k + 4, 8)]
+    annotate_road_distance(patient_lat, patient_lng, shortlist)
+    shortlist.sort(key=lambda f: f["distance_km"])
+    top = shortlist[:k]
+    for f in top:
+        f.pop("_signal", None)
+    return {
+        "disclaimer": "Nearby pharmacies/chemists for obtaining medicines.",
+        "pharmacies": top,
     }
 
 
@@ -377,3 +485,5 @@ if __name__ == "__main__":
     print(find_providers("Rheumatology", 12.9352, 77.6245, k=3, radius_m=1000))
     print("\nEXPLICIT FALLBACK (labelled non-specialist):")
     print(find_general_facilities(12.9352, 77.6245, k=3))
+    print("\nPHARMACIES:")
+    print(find_pharmacies(12.9352, 77.6245, k=3))

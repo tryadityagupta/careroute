@@ -528,6 +528,9 @@
         // never inject tags; line breaks stay handled by white-space: pre-wrap.
         function renderMarkdown(md) {
             return escapeHtml(md)
+                // Markdown headings (#, ##, ### ...) -> a bold line, so a stray
+                // "###" never shows as literal text in the chat bubble.
+                .replace(/^#{1,6}\s+(.+)$/gm, "<strong>$1</strong>")
                 .replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
                 .replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, "$1<em>$2</em>")
                 .replace(/`([^`]+?)`/g, "<code>$1</code>");
@@ -560,6 +563,30 @@
         }
         tryGeolocate();
 
+        // --- Multi-turn conversation state -----------------------------------
+        // sessionId is null until the first answer; after that every submit is a
+        // follow-up in the SAME conversation, so the agent remembers earlier
+        // symptoms and any meds/history you add later.
+        let sessionId = null;
+        const goBtn = $("go");
+
+        // "Start over" control, built in JS so the page markup stays untouched.
+        const resetBtn = document.createElement("button");
+        resetBtn.type = "button";
+        resetBtn.textContent = "Start over";
+        resetBtn.style.cssText = "margin-left:12px;background:none;border:none;" +
+            "color:#c2410c;cursor:pointer;font:inherit;text-decoration:underline;display:none;";
+        resetBtn.addEventListener("click", () => {
+            sessionId = null;
+            goBtn.textContent = "Find care";
+            resetBtn.style.display = "none";
+            $("symptoms").value = "";
+            $("symptoms").placeholder = "";
+            setAnswer("", "");
+            $("symptoms").focus();
+        });
+        goBtn.insertAdjacentElement("afterend", resetBtn);
+
         $("go").addEventListener("click", async () => {
             const symptoms = $("symptoms").value.trim();
             const name = $("pname").value.trim();
@@ -584,17 +611,16 @@
                 '<span>Reading your symptoms and checking nearby providers\u2026</span>';
 
             try {
-                // Optional private-beta gate: set API_KEY to one of the server's
-                // CAREROUTE_API_KEYS to call a locked-down endpoint. A value here
-                // is visible in the browser, so it gates casual traffic — it does
-                // NOT hide the key. Leave "" for an open endpoint.
+                // Optional private-beta gate (see note above). Leave "" for open.
                 const API_KEY = "";
-                const res = await fetch("/care", {
+                const res = await fetch("/chat", {
                     method: "POST",
                     headers: API_KEY
                         ? { "Content-Type": "application/json", "X-API-Key": API_KEY }
                         : { "Content-Type": "application/json" },
-                    body: JSON.stringify({ symptoms, lat, lng, name, meds })
+                    // message = this turn's text; session_id threads the conversation
+                    // (null on turn 1) so the agent remembers earlier turns.
+                    body: JSON.stringify({ message: symptoms, lat, lng, name, meds, session_id: sessionId })
                 });
                 if (!res.ok) {
                     const msg = res.status === 429
@@ -608,11 +634,18 @@
                     return;
                 }
                 const data = await res.json();
+                sessionId = data.session_id || sessionId;   // remember the thread
                 const answer = (data.answer || "").trim();
                 if (answer) {
                     setAnswer("is-results", answer, true);
+                    // Switch into follow-up mode: the same conversation continues.
+                    goBtn.textContent = "Send follow-up";
+                    resetBtn.style.display = "inline";
+                    $("symptoms").value = "";
+                    $("symptoms").placeholder = "Add more details, meds, or a follow-up\u2026";
+                    $("symptoms").focus();
                 } else {
-                    setAnswer("is-empty", "No providers came back. Try describing your symptoms a little differently.");
+                    setAnswer("is-empty", "No answer came back. Try rephrasing.");
                 }
             } catch (e) {
                 setAnswer("is-error", "We couldn't reach the server \u2014 it may still be starting up. Give it a moment and try again.");
