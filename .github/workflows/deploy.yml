@@ -67,6 +67,7 @@ jobs:
           echo "Testing https://$FQDN ..."
 
           # 1) /version must report the commit we just deployed (not a stale image).
+          #    The first hit may cold-start the container, so retry.
           OK=""
           for i in 1 2 3 4 5; do
             BODY=$(curl -fsS --max-time 20 "https://$FQDN/version" || true)
@@ -80,10 +81,23 @@ jobs:
             echo "Smoke test FAILED: /version never reported ${{ github.sha }}"; exit 1
           fi
 
-          # 2) /care must return a real answer for a known Bangalore location.
-          RESP=$(curl -fsS --max-time 40 -X POST "https://$FQDN/care" \
-            -H "Content-Type: application/json" \
-            -d '{"symptoms":"itchy fingers","lat":12.9719,"lng":77.6412}')
-          echo "$RESP"
-          echo "$RESP" | grep -qi '"answer"' || { echo "Smoke test FAILED: no answer field"; exit 1; }
+          # 2) /care must return an answer. The FIRST call after a fresh deploy is
+          #    slow: cold container + uncached Overpass/OSRM + several LLM calls can
+          #    exceed a minute. Allow a generous per-try timeout and retry — the
+          #    first try warms the OSM cache (the server finishes and caches even if
+          #    curl gives up), so a later try is fast. || true keeps a timeout from
+          #    tripping `set -e` before we can check the result.
+          CARE_OK=""
+          for i in 1 2 3; do
+            RESP=$(curl -fsS --max-time 90 -X POST "https://$FQDN/care" \
+              -H "Content-Type: application/json" \
+              -d '{"symptoms":"itchy fingers","lat":12.9719,"lng":77.6412}' || true)
+            if echo "$RESP" | grep -qi '"answer"'; then
+              echo "$RESP"; CARE_OK=1; break
+            fi
+            echo "care attempt $i returned no answer yet, retrying..."; sleep 5
+          done
+          if [ -z "$CARE_OK" ]; then
+            echo "Smoke test FAILED: /care returned no answer after retries"; exit 1
+          fi
           echo "Smoke test passed."
