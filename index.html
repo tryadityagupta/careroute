@@ -584,11 +584,29 @@
                 '<span>Reading your symptoms and checking nearby providers\u2026</span>';
 
             try {
+                // Optional private-beta gate: set API_KEY to one of the server's
+                // CAREROUTE_API_KEYS to call a locked-down endpoint. A value here
+                // is visible in the browser, so it gates casual traffic — it does
+                // NOT hide the key. Leave "" for an open endpoint.
+                const API_KEY = "";
                 const res = await fetch("/care", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: API_KEY
+                        ? { "Content-Type": "application/json", "X-API-Key": API_KEY }
+                        : { "Content-Type": "application/json" },
                     body: JSON.stringify({ symptoms, lat, lng, name, meds })
                 });
+                if (!res.ok) {
+                    const msg = res.status === 429
+                        ? "You're going a bit fast \u2014 wait a few seconds and try again."
+                        : res.status === 401
+                            ? "This endpoint needs an access key."
+                            : res.status === 503
+                                ? "We're at capacity right now \u2014 please try again later."
+                                : "Something went wrong \u2014 please try again.";
+                    setAnswer("is-error", msg);
+                    return;
+                }
                 const data = await res.json();
                 const answer = (data.answer || "").trim();
                 if (answer) {

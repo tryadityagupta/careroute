@@ -40,7 +40,6 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-
       - name: Get the real registry login server
         run: echo "ACR_LOGIN_SERVER=$(az acr show --name ${{ env.ACR_NAME }} --query loginServer -o tsv)" >> "$GITHUB_ENV"
 
@@ -60,3 +59,31 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             --set-env-vars GIT_SHA=${{ github.sha }}
+
+      - name: Smoke test the live app
+        run: |
+          FQDN=$(az containerapp show -n ${{ env.CONTAINER_APP }} -g ${{ env.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Testing https://$FQDN ..."
+
+          # 1) /version must report the commit we just deployed (not a stale image).
+          OK=""
+          for i in 1 2 3 4 5; do
+            BODY=$(curl -fsS --max-time 20 "https://$FQDN/version" || true)
+            echo "$BODY"
+            if echo "$BODY" | grep -q '"commit":"${{ github.sha }}"'; then
+              echo "version ok"; OK=1; break
+            fi
+            echo "waiting for the new revision to go live (attempt $i)..."; sleep 15
+          done
+          if [ -z "$OK" ]; then
+            echo "Smoke test FAILED: /version never reported ${{ github.sha }}"; exit 1
+          fi
+
+          # 2) /care must return a real answer for a known Bangalore location.
+          RESP=$(curl -fsS --max-time 40 -X POST "https://$FQDN/care" \
+            -H "Content-Type: application/json" \
+            -d '{"symptoms":"itchy fingers","lat":12.9719,"lng":77.6412}')
+          echo "$RESP"
+          echo "$RESP" | grep -qi '"answer"' || { echo "Smoke test FAILED: no answer field"; exit 1; }
+          echo "Smoke test passed."
