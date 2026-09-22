@@ -112,6 +112,18 @@ Reason step by step:
    "speciality_tag"), say what kind of facility it actually is — e.g. "a
    multi-speciality clinic that lists psychiatry" — so the user can judge.
 
+Location and details from the user's own words:
+- The patient's stored coordinates come from the browser and may be wrong, or
+  the user may name a DIFFERENT location (e.g. "she is in Guwahati, not
+  Bangalore"). When the user names a place, call geocode_place to resolve it,
+  run EVERY search (find_providers / find_general_facilities / find_pharmacies)
+  with those coordinates, and call update_patient_record(lat, lng, area=<place>)
+  so later turns stay there. NEVER assume the stored point is in the city the
+  user named, and NEVER state a result is in a specific city or locality unless
+  you geocoded it — give distances and at most "near <the place you searched>".
+- If the user states the patient's NAME or MEDICATIONS in their message, call
+  update_patient_record to save them onto the record.
+
 Obtaining a medicine (not a diagnosis): if the user wants to BUY or pick up a
 medicine or over-the-counter drug — painkillers, antacids, ORS, cold medicine,
 etc. — the right provider is a PHARMACY. Call find_pharmacies (after
@@ -170,6 +182,39 @@ def get_patient_record(
     ID. Call this FIRST to get the patient's coordinates before searching for
     providers."""
     return careroute_tools.get_patient_record(patient_id)
+
+
+@tool
+def geocode_place(
+    place: Annotated[str, "A place name to resolve, e.g. 'Guwahati'"],
+) -> dict:
+    """Resolve a place NAME to coordinates. Call this whenever the user gives a
+    location by name (e.g. "she is in Guwahati") rather than trusting the
+    patient's stored coordinates. Feed the returned lat/lng into the search
+    tools so the search happens THERE. Never guess coordinates, and never claim
+    a result is in a city you did not resolve with this tool."""
+    return careroute_tools.geocode_place(place)
+
+
+@tool
+def update_patient_record(
+    patient_id: Annotated[str, "The patient's ID"],
+    name: Annotated[str | None, "Patient name, if the user stated it"] = None,
+    medications: Annotated[str | None,
+                           "Comma-separated meds the user mentioned"] = None,
+    lat: Annotated[float | None, "New latitude, from geocode_place"] = None,
+    lng: Annotated[float | None, "New longitude, from geocode_place"] = None,
+    area: Annotated[str | None,
+                    "Human name of the location, e.g. 'Guwahati'"] = None,
+) -> dict:
+    """Persist details the user states onto the patient record: their NAME,
+    MEDICATIONS, or a corrected LOCATION. For a named location, call
+    geocode_place first, then pass its lat/lng here plus area=<place>. Only the
+    fields you pass change."""
+    return careroute_tools.update_patient_record(
+        patient_id=patient_id, name=name, medications=medications,
+        lat=lat, lng=lng, area=area,
+    )
 
 
 @tool
@@ -253,8 +298,9 @@ def get_emergency_help(
     )
 
 
-TOOLS = [get_patient_record, find_providers, find_general_facilities,
-         find_pharmacies, get_emergency_help]
+TOOLS = [get_patient_record, update_patient_record, geocode_place,
+         find_providers, find_general_facilities, find_pharmacies,
+         get_emergency_help]
 
 llm = ChatOpenAI(model="gpt-4o-mini")  # no temperature set, matching agent.py.
 llm_with_tools = llm.bind_tools(TOOLS)

@@ -13,6 +13,7 @@ use each tool. We feed these descriptions to the model so it can choose.
 from emergency import get_emergency_help  # always available, all backends
 import json
 import os
+import requests
 from math import radians, sin, cos, sqrt, atan2
 
 from dotenv import load_dotenv
@@ -62,6 +63,77 @@ def get_patient_record(patient_id: str) -> dict:
     if record is None:
         return {"error": f"No patient found with id {patient_id}"}
     return record
+
+
+# A named place resolves to the same point every time, and Nominatim's usage
+# policy asks callers to be gentle — so cache and never look one up twice.
+_GEOCODE_CACHE: dict = {}
+_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+
+
+def geocode_place(place: str) -> dict:
+    """Resolve a place NAME (city, area, address) to coordinates.
+
+    Call this whenever the user gives a location by name — e.g. "she is in
+    Guwahati" — instead of trusting the patient's stored coordinates. Feed the
+    returned lat/lng into find_providers / find_general_facilities /
+    find_pharmacies so the search actually happens THERE. Returns
+    {lat, lng, display_name}, or an error. Never guess coordinates yourself, and
+    never claim a result is in a city you did not resolve here.
+    """
+    key = (place or "").strip().lower()
+    if not key:
+        return {"error": "empty place"}
+    if key in _GEOCODE_CACHE:
+        return _GEOCODE_CACHE[key]
+    try:
+        resp = requests.get(
+            _NOMINATIM_URL,
+            params={"q": place, "format": "jsonv2", "limit": 1},
+            headers={"User-Agent": "CareRoute/1.0 (care-routing demo)"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        hits = resp.json()
+    except requests.RequestException as e:
+        return {"error": f"Geocoding failed: {e}"}
+    if not hits:
+        return {"match_found": False,
+                "reason": f"Could not find a place named '{place}'."}
+    top = hits[0]
+    out = {"lat": float(top["lat"]), "lng": float(top["lon"]),
+           "display_name": top.get("display_name", place)}
+    _GEOCODE_CACHE[key] = out
+    return out
+
+
+def update_patient_record(patient_id: str, name: str = None,
+                          medications=None, lat: float = None,
+                          lng: float = None, area: str = None) -> dict:
+    """Save details the user states in conversation onto the patient's record.
+
+    Use when the user gives — in their message — the patient's NAME, their
+    MEDICATIONS, or a corrected LOCATION. For a location given by name, call
+    geocode_place first, then pass its lat/lng here (plus area=<the place>).
+    Only the fields you pass are changed. Returns the updated record.
+    """
+    rec = _PATIENTS.get(patient_id)
+    if rec is None:
+        return {"error": f"No patient found with id {patient_id}"}
+    if name:
+        rec["name"] = name.strip()
+    if medications is not None:
+        meds = ([m.strip() for m in medications.split(",")]
+                if isinstance(medications, str) else list(medications))
+        existing = rec.setdefault("current_medications", [])
+        for m in meds:
+            if m and m not in existing:
+                existing.append(m)
+    if lat is not None and lng is not None:
+        rec["lat"], rec["lng"] = float(lat), float(lng)
+    if area:
+        rec["area"] = area.strip()
+    return rec
 
 
 def find_providers(specialty: str, patient_lat: float, patient_lng: float,
@@ -175,6 +247,8 @@ print(f"[tools] find_providers backend: {_BACKEND}")
 
 TOOL_REGISTRY = {
     "get_patient_record": get_patient_record,
+    "update_patient_record": update_patient_record,
+    "geocode_place": geocode_place,
     "find_providers": find_providers,
     "find_general_facilities": find_general_facilities,
     "find_pharmacies": find_pharmacies,

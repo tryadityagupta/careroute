@@ -112,17 +112,24 @@ def care(
             f"Find the nearest appropriate specialists."
         )
         answer = run_agent(user_request)
+        # may have been updated by the agent
+        rec = tools._PATIENTS.get(patient_id, {})
         request_log.log_interaction(
             endpoint="/care", user_text=req.symptoms, answer=answer,
-            meds=meds_list, name=req.name, lat=req.lat, lng=req.lng,
+            meds=rec.get("current_medications", meds_list),
+            name=rec.get("name", req.name),
+            lat=rec.get("lat", req.lat), lng=rec.get("lng", req.lng),
             backend=tools._BACKEND,
             latency_ms=round((time.perf_counter() - t0) * 1000),
         )
         return {"answer": answer}
     except Exception as exc:
+        rec = tools._PATIENTS.get(patient_id, {})
         request_log.log_interaction(
             endpoint="/care", user_text=req.symptoms, answer=None,
-            meds=meds_list, name=req.name, lat=req.lat, lng=req.lng,
+            meds=rec.get("current_medications", meds_list),
+            name=rec.get("name", req.name),
+            lat=rec.get("lat", req.lat), lng=rec.get("lng", req.lng),
             backend=tools._BACKEND,
             latency_ms=round((time.perf_counter() - t0) * 1000),
             status="error", error=exc,
@@ -215,18 +222,26 @@ def chat(
     t0 = time.perf_counter()
     try:
         answer = continue_conversation(user_message, thread_id=session_id)
+        rec = tools._PATIENTS.get(patient_id, {})  # reflects agent updates
         request_log.log_interaction(
             endpoint="/chat", user_text=req.message, answer=answer,
-            session_id=session_id, turn=turn, meds=_parse_meds(req.meds),
-            name=req.name, lat=req.lat, lng=req.lng, backend=tools._BACKEND,
+            session_id=session_id, turn=turn,
+            meds=rec.get("current_medications", _parse_meds(req.meds)),
+            name=rec.get("name", req.name),
+            lat=rec.get("lat", req.lat), lng=rec.get("lng", req.lng),
+            backend=tools._BACKEND,
             latency_ms=round((time.perf_counter() - t0) * 1000),
         )
         return {"session_id": session_id, "answer": answer}
     except Exception as exc:
+        rec = tools._PATIENTS.get(patient_id, {})
         request_log.log_interaction(
             endpoint="/chat", user_text=req.message, answer=None,
-            session_id=session_id, turn=turn, meds=_parse_meds(req.meds),
-            name=req.name, lat=req.lat, lng=req.lng, backend=tools._BACKEND,
+            session_id=session_id, turn=turn,
+            meds=rec.get("current_medications", _parse_meds(req.meds)),
+            name=rec.get("name", req.name),
+            lat=rec.get("lat", req.lat), lng=rec.get("lng", req.lng),
+            backend=tools._BACKEND,
             latency_ms=round((time.perf_counter() - t0) * 1000),
             status="error", error=exc,
         )
