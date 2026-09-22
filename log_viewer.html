@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CareRoute — Interaction Log Viewer</title>
+    <style>
+        :root {
+            --bg: #fdf8f4;
+            --card: #ffffff;
+            --ink: #1f2937;
+            --muted: #6b7280;
+            --accent: #ea580c;
+            --accent-soft: #fff1e9;
+            --line: #eadfd6;
+            --ok: #067647;
+            --err: #b42318;
+            --err-bg: #fef3f2;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: var(--ink);
+            background: var(--bg);
+            padding: 24px;
+        }
+
+        h1 {
+            font-size: 20px;
+            margin: 0 0 2px;
+        }
+
+        .sub {
+            color: var(--muted);
+            margin: 0 0 18px;
+            font-size: 13px;
+        }
+
+        .panel {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .drop {
+            border: 2px dashed var(--line);
+            border-radius: 12px;
+            padding: 28px;
+            text-align: center;
+            color: var(--muted);
+            cursor: pointer;
+            transition: .15s;
+        }
+
+        .drop:hover,
+        .drop.over {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+            color: var(--ink);
+        }
+
+        .drop input {
+            display: none;
+        }
+
+        .stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .stat {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 8px 14px;
+            min-width: 96px;
+        }
+
+        .stat b {
+            display: block;
+            font-size: 18px;
+        }
+
+        .stat span {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        input[type=search],
+        select {
+            font: inherit;
+            padding: 8px 10px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--card);
+            color: var(--ink);
+        }
+
+        input[type=search] {
+            flex: 1;
+            min-width: 220px;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: var(--card);
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 13px;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 9px 12px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: top;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            background: var(--accent-soft);
+            cursor: pointer;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        th .arrow {
+            color: var(--accent);
+            font-size: 11px;
+        }
+
+        tr:hover td {
+            background: #fbfaf9;
+        }
+
+        .pill {
+            display: inline-block;
+            padding: 1px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .pill.care {
+            background: #eef2ff;
+            color: #3730a3;
+        }
+
+        .pill.chat {
+            background: var(--accent-soft);
+            color: var(--accent);
+        }
+
+        .pill.ok {
+            background: #ecfdf3;
+            color: var(--ok);
+        }
+
+        .pill.error {
+            background: var(--err-bg);
+            color: var(--err);
+        }
+
+        .sid {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 12px;
+            color: var(--muted);
+            cursor: pointer;
+            text-decoration: underline dotted;
+        }
+
+        .txt {
+            max-width: 340px;
+        }
+
+        .txt .full {
+            display: none;
+            white-space: pre-wrap;
+        }
+
+        .txt.open .clip {
+            display: none;
+        }
+
+        .txt.open .full {
+            display: block;
+        }
+
+        .more {
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .meds {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .empty {
+            text-align: center;
+            color: var(--muted);
+            padding: 40px;
+        }
+
+        code {
+            background: #f4efe9;
+            padding: 1px 5px;
+            border-radius: 5px;
+        }
+
+        .clearfilter {
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>CareRoute — Interaction Log Viewer</h1>
+    <p class="sub">Reads your <code>interactions.jsonl</code> entirely in your browser — nothing is uploaded. Handy for
+        private health-data logs.</p>
+
+    <div class="panel">
+        <label class="drop" id="drop">
+            <input type="file" id="file" accept=".jsonl,.json,.log,.txt">
+            <div><b>Choose a .jsonl file</b> or drop it here</div>
+            <div style="font-size:12px;margin-top:4px">e.g. logs/interactions.jsonl</div>
+        </label>
+    </div>
+
+    <div id="view" style="display:none">
+        <div class="stats" id="stats"></div>
+        <div class="controls">
+            <input type="search" id="q" placeholder="Search user text &amp; answers…">
+            <select id="fEndpoint">
+                <option value="">All endpoints</option>
+                <option value="/chat">/chat</option>
+                <option value="/care">/care</option>
+            </select>
+            <select id="fStatus">
+                <option value="">All statuses</option>
+                <option value="ok">ok</option>
+                <option value="error">error</option>
+            </select>
+            <span id="sessionFilter"></span>
+        </div>
+        <div class="table-wrap">
+            <table id="tbl">
+                <thead>
+                    <tr>
+                        <th data-k="ts">Time <span class="arrow"></span></th>
+                        <th data-k="endpoint">Endpoint <span class="arrow"></span></th>
+                        <th data-k="session_id">Session <span class="arrow"></span></th>
+                        <th data-k="turn">Turn <span class="arrow"></span></th>
+                        <th data-k="latency_ms">Latency <span class="arrow"></span></th>
+                        <th data-k="status">Status <span class="arrow"></span></th>
+                        <th data-k="loc">Loc <span class="arrow"></span></th>
+                        <th data-k="meds">Meds <span class="arrow"></span></th>
+                        <th data-k="user_text">User said <span class="arrow"></span></th>
+                        <th data-k="answer">Agent answer <span class="arrow"></span></th>
+                    </tr>
+                </thead>
+                <tbody id="rows"></tbody>
+            </table>
+        </div>
+        <p class="sub" id="count" style="margin-top:10px"></p>
+    </div>
+
+    <script>
+        let ALL = [];
+        let sort = { k: "ts", dir: 1 };
+        let sessionOnly = "";
+
+        const $ = id => document.getElementById(id);
+        const esc = s => (s ?? "").toString().replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+        function parseJSONL(text) {
+            const out = [];
+            for (const line of text.split(/\r?\n/)) {
+                const t = line.trim();
+                if (!t) continue;
+                try { out.push(JSON.parse(t)); } catch (e) { /* skip malformed line */ }
+            }
+            return out;
+        }
+
+        function fmtTime(ts) {
+            if (!ts) return "";
+            const d = new Date(ts);
+            return isNaN(d) ? ts : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        }
+        const loc = r => (r.loc && r.loc.lat != null) ? `${r.loc.lat}, ${r.loc.lng}` : "";
+        const medsStr = r => Array.isArray(r.meds) ? r.meds.join(", ") : (r.meds || "");
+
+        function median(nums) {
+            const a = nums.filter(n => typeof n === "number").sort((x, y) => x - y);
+            if (!a.length) return 0;
+            const m = Math.floor(a.length / 2);
+            return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2);
+        }
+
+        function renderStats(rows) {
+            const sessions = new Set(rows.map(r => r.session_id).filter(Boolean));
+            const care = rows.filter(r => r.endpoint === "/care").length;
+            const chat = rows.filter(r => r.endpoint === "/chat").length;
+            const errors = rows.filter(r => r.status === "error").length;
+            const med = median(rows.map(r => r.latency_ms));
+            const cards = [
+                ["Interactions", rows.length], ["Sessions", sessions.size],
+                ["/chat turns", chat], ["/care", care],
+                ["Errors", errors], ["Median latency", (med / 1000).toFixed(1) + "s"],
+            ];
+            $("stats").innerHTML = cards.map(([s, b]) => `<div class="stat"><b>${b}</b><span>${s}</span></div>`).join("");
+        }
+
+        function cellText(val, cls) {
+            const full = esc(val);
+            const clip = full.length > 140 ? esc(val.slice(0, 140)) + "…" : full;
+            const more = full.length > 140 ? `<span class="more" onclick="this.closest('.txt').classList.toggle('open')">more/less</span>` : "";
+            return `<div class="txt ${cls || ""}"><span class="clip">${clip}</span><span class="full">${full}</span> ${more}</div>`;
+        }
+
+        function currentRows() {
+            const q = $("q").value.trim().toLowerCase();
+            const ep = $("fEndpoint").value, st = $("fStatus").value;
+            let rows = ALL.filter(r =>
+                (!ep || r.endpoint === ep) &&
+                (!st || r.status === st) &&
+                (!sessionOnly || r.session_id === sessionOnly) &&
+                (!q || ((r.user_text || "") + " " + (r.answer || "")).toLowerCase().includes(q))
+            );
+            rows.sort((a, b) => {
+                let x = a[sort.k], y = b[sort.k];
+                if (sort.k === "loc") { x = loc(a); y = loc(b); }
+                if (sort.k === "meds") { x = medsStr(a); y = medsStr(b); }
+                if (x == null) x = ""; if (y == null) y = "";
+                return (x < y ? -1 : x > y ? 1 : 0) * sort.dir;
+            });
+            return rows;
+        }
+
+        function render() {
+            const rows = currentRows();
+            $("rows").innerHTML = rows.map(r => `
+      <tr>
+        <td style="white-space:nowrap">${esc(fmtTime(r.ts))}</td>
+        <td><span class="pill ${r.endpoint === "/care" ? "care" : "chat"}">${esc(r.endpoint || "")}</span></td>
+        <td><span class="sid" title="click to filter" onclick="filterSession('${esc(r.session_id || "")}')">${esc((r.session_id || "").slice(0, 8) || "—")}</span></td>
+        <td>${r.turn ?? ""}</td>
+        <td style="white-space:nowrap">${r.latency_ms != null ? (r.latency_ms / 1000).toFixed(1) + "s" : ""}</td>
+        <td><span class="pill ${r.status === "error" ? "error" : "ok"}">${esc(r.status || "")}</span></td>
+        <td style="white-space:nowrap">${esc(loc(r))}</td>
+        <td class="meds">${esc(medsStr(r))}</td>
+        <td class="txt-cell">${cellText(r.user_text || "")}</td>
+        <td class="txt-cell">${cellText(r.answer || (r.error ? "⚠ " + r.error : ""))}</td>
+      </tr>`).join("") || `<tr><td colspan="10" class="empty">No rows match your filters.</td></tr>`;
+            $("count").textContent = `${rows.length} of ${ALL.length} interactions shown`;
+            document.querySelectorAll("th .arrow").forEach(a => a.textContent = "");
+            const th = document.querySelector(`th[data-k="${sort.k}"] .arrow`);
+            if (th) th.textContent = sort.dir === 1 ? "▲" : "▼";
+            $("sessionFilter").innerHTML = sessionOnly
+                ? `Session <code>${esc(sessionOnly.slice(0, 8))}</code> <span class="clearfilter" onclick="filterSession('')">clear</span>` : "";
+        }
+
+        window.filterSession = sid => { sessionOnly = sid; render(); };
+
+        function load(text) {
+            ALL = parseJSONL(text);
+            if (!ALL.length) { alert("No valid JSON lines found in that file."); return; }
+            $("view").style.display = "block";
+            renderStats(ALL);
+            render();
+        }
+
+        // Wiring
+        $("file").addEventListener("change", e => {
+            const f = e.target.files[0]; if (!f) return;
+            const r = new FileReader(); r.onload = () => load(r.result); r.readAsText(f);
+        });
+        const drop = $("drop");
+        ["dragover", "dragenter"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+        ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+        drop.addEventListener("drop", e => {
+            const f = e.dataTransfer.files[0]; if (!f) return;
+            const r = new FileReader(); r.onload = () => load(r.result); r.readAsText(f);
+        });
+        ["q", "fEndpoint", "fStatus"].forEach(id => $(id).addEventListener("input", render));
+        document.querySelectorAll("th[data-k]").forEach(th => th.addEventListener("click", () => {
+            const k = th.dataset.k;
+            sort.dir = (sort.k === k) ? -sort.dir : 1; sort.k = k; render();
+        }));
+    </script>
+</body>
+
+</html>
