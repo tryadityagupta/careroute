@@ -28,6 +28,7 @@ is enforced.
 
 import json
 import os
+import re
 import time
 from math import radians, sin, cos, sqrt, atan2
 
@@ -57,8 +58,15 @@ _MAX_RADIUS_M = 30000
 
 # SPEED FIX: the mirrors used to be tried ONE AFTER ANOTHER, 20 s each, for two
 # rounds — up to ~122 s before giving up. Now all mirrors are queried IN
-# PARALLEL and the first good answer wins, so the worst case is one timeout.
-_HTTP_TIMEOUT_S = 12
+# PARALLEL and the first good answer wins.
+# 12 s proved too tight: a dense-city 8 km query routinely takes ~12 s, so a
+# busy moment made EVERY mirror time out. 25 s matches the query's own
+# [timeout:25]; since the mirrors race in parallel, the worst case stays ~25 s.
+_HTTP_TIMEOUT_S = 25
+# If every mirror fails FAST (e.g. instant 429/504), one quick second race is
+# worth it. Skipped if the first race already used up most of the budget.
+_RETRY_IF_FAILED_WITHIN_S = 8
+_RETRY_BACKOFF_S = 1.5
 
 # ---------------------------------------------------------------------------
 # LOCAL FETCH CACHE — because every public Overpass instance is a shared,
@@ -134,7 +142,8 @@ def _find_cached(lat: float, lng: float, radius_m: int, now: float, fresh=True):
         if fresh and now - hit["fetched_at"] >= _CACHE_TTL_S:
             continue
         if best is None or r < best[0]:
-            best = (r, hit)          # smallest sufficient radius = least filtering
+            # smallest sufficient radius = least filtering
+            best = (r, hit)
     return best[1] if best else None
 
 
@@ -188,6 +197,59 @@ def _stem(specialty: str) -> str:
     return specialty.lower().rstrip("sy")
 
 
+# ---------------------------------------------------------------------------
+# SPECIALTY MATCHING — why "Orthopedics" found nothing in Bengaluru.
+#
+# The crude stem turned "Orthopedics" into "orthopedic", which never matches
+# OSM's healthcare:speciality value "orthopaedics" (OSM uses British spelling),
+# nor Indian clinic names like "Sparsh Ortho Care" or "Bone & Joint Hospital".
+# So each common specialty gets explicit patterns: spelling variants, the
+# short forms clinics actually use, and — where a short form is ambiguous —
+# an EXCLUDE pattern ("ortho" must not match an orthodontic dental clinic).
+# Unknown specialties still fall back to the old stem.
+# ---------------------------------------------------------------------------
+_SPECIALTY_PATTERNS = [
+    # (keys: regexes matched at a WORD START of the requested specialty,
+    #  include regex, exclude regex). Word-start matters: a bare "ent" key
+    #  would otherwise fire for "Gastroenterology" and "Dentistry".
+    (("ortho",), r"orthop(a)?ed|\bortho\b|bone\s*(and|&)\s*joint|joint\s*replacement|fracture",
+     r"orthodont|dental|dentist|\bteeth\b"),
+    (("pediatr", "paediatr", "child"),
+     r"pa?ediatr|children'?s\s*(hospital|clinic)|\bchild\s*care\b", None),
+    (("gyn", "obstet", "women"),
+     r"gyn(a)?ecolog|obstetric|maternity|women'?s\s*(hospital|clinic)|\bivf\b", None),
+    (("ent\\b", "otolaryng", "ear\\b"),
+     r"\bent\b|otolaryng|otorhinolaryng|ear,?\s*nose", None),
+    (("cardio", "heart"), r"cardi|\bheart\b", None),
+    (("derma", "skin"), r"dermatolog|\bskin\b", None),
+    (("neuro",), r"neurolog|neuro\s*(care|clinic|hospital)|\bneuro\b", r"neurosurg(?!ery)"),
+    (("psychiat", "mental"), r"psychiatr|mental\s*health|de-?addiction", None),
+    (("ophthalm", "eye"), r"ophthalm|\beye\b", None),
+    (("gastro",), r"gastro", None),
+    (("uro",), r"urolog|\buro\b", None),
+    (("oncol", "cancer"), r"oncolog|cancer", None),
+    (("pulmon", "chest", "respir"), r"pulmon|\bchest\b|respirat", None),
+    (("nephro", "kidney"), r"nephrolog|kidney|dialysis", None),
+    (("endocrin", "diabet"), r"endocrin|diabet", None),
+    (("dent",), r"dent|orthodont", None),
+    (("general", "family"),
+     r"general\s*(medicine|practice|physician)|family\s*(medicine|doctor)", None),
+]
+
+
+def _specialty_matcher(specialty: str):
+    """Return a function(text) -> bool for this specialty."""
+    spec = specialty.lower()
+    for keys, inc, exc in _SPECIALTY_PATTERNS:
+        if any(re.search(r"\b" + k, spec) for k in keys):
+            inc_re = re.compile(inc, re.I)
+            exc_re = re.compile(exc, re.I) if exc else None
+            return lambda text: bool(inc_re.search(text)) and not (
+                exc_re and exc_re.search(text))
+    stem = _stem(specialty)
+    return lambda text: stem in text.lower()
+
+
 def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
     """Shared Overpass fetch. Returns (facilities, error_or_None).
 
@@ -226,6 +288,10 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
         headers = {"User-Agent": "CareRoute-demo/1.0 (learning project)"}
         t0 = time.perf_counter()
         elements, last_error = _race_mirrors(query, headers)
+        if elements is None and time.perf_counter() - t0 < _RETRY_IF_FAILED_WITHIN_S:
+            print("[osm] all mirrors failed fast — one more race")
+            time.sleep(_RETRY_BACKOFF_S)
+            elements, last_error = _race_mirrors(query, headers)
         print(f"[osm] overpass fetch r={radius_m} took "
               f"{time.perf_counter() - t0:.1f}s ok={elements is not None}")
         if elements is not None:
@@ -233,7 +299,8 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
                 _CACHE[key] = {"fetched_at": now, "elements": elements}
             _cache_save()
         else:
-            hit = _find_cached(patient_lat, patient_lng, radius_m, now, fresh=False)
+            hit = _find_cached(patient_lat, patient_lng,
+                               radius_m, now, fresh=False)
 
         if elements is None and hit:
             # stale-if-error: every mirror is down, but we have seen this
@@ -262,7 +329,7 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
                          "emergency care."),
             }
 
-    stem = _stem(specialty) if specialty else None
+    matches_specialty = _specialty_matcher(specialty) if specialty else None
     out = []
     for el in elements:
         tags = el.get("tags", {})
@@ -305,7 +372,7 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
             "is_pharmacy": is_pharmacy,
             "_signal": signal,
         }
-        if stem:
+        if matches_specialty:
             # Bengaluru OSM facilities often carry healthcare:speciality as a
             # long semicolon list, sometimes batch-pasted across many POIs.
             # Substring-matching the whole blob confirmed a DENTAL clinic for
@@ -314,10 +381,10 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
             raw_tag = tags.get("healthcare:speciality", "")
             tokens = [t.strip().lower()
                       for t in raw_tag.split(";") if t.strip()]
-            if stem in name.lower():
+            if matches_specialty(name):
                 item["specialty_match"] = True
                 item["matched_via"] = "name"
-            elif any(stem in t for t in tokens):
+            elif any(matches_specialty(t) for t in tokens):
                 item["specialty_match"] = True
                 item["matched_via"] = "speciality_tag"
                 item["speciality_tag"] = raw_tag       # the evidence, verbatim
