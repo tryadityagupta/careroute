@@ -142,6 +142,26 @@ def test_upstream_outage_is_not_reported_as_no_specialists():
     assert "NOT a confirmed result" in final
 
 
+def test_turn_trace_records_tools_without_pii():
+    state, _ = run([
+        AIMessage(content="", id="ai1",
+                  tool_calls=[call("update_patient_record",
+                                   {"patient_id": "P001", "name": "Secret Name"}, 1)]),
+        AIMessage(content="", id="ai2",
+                  tool_calls=[call("find_providers",
+                                   {"specialty": "Cardiology", **LOC}, 2)]),
+        AIMessage(content="Nearest:\n1. Dr. A - 1.2 km", id="ai3"),
+    ])
+    trace = m._turn_trace(state["messages"])
+    assert [t["tool"] for t in trace["tools"]] == ["update_patient_record",
+                                                   "find_providers"]
+    assert "name" not in trace["tools"][0]["args"]           # PII dropped
+    # coords coarsened
+    assert trace["tools"][1]["args"]["patient_lat"] == 12.94
+    assert trace["tools"][1]["result"].startswith("OK list")
+    assert trace["llm_calls"] == 3
+
+
 def test_tool_schema_kept_the_old_guidance():
     from langchain_core.utils.function_calling import convert_to_openai_tool
     fp = convert_to_openai_tool(m.find_providers)["function"]

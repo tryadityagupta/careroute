@@ -157,6 +157,20 @@ Recovering when find_providers returns match_found=false:
   still fails, tell the user the directory is temporarily unreachable and to try
   again shortly, and direct them to emergency care for urgent symptoms.
 
+Questions about SPECIFIC facilities ("does this clinic do orthopaedics?", "do
+these hospitals treat X?"): answer for EACH named facility directly, first.
+Say whether a tool confirmed it as a specialty match. If no tool did, say the
+map data does not list that specialty for it — which is NOT the same as saying
+it lacks one — and suggest calling ahead to check (a general hospital may well
+have the department). Only after answering may you point to confirmed
+alternatives, and say plainly that they are different facilities and how far
+away they are. Never answer such a question by re-listing other facilities as
+if they were the ones asked about.
+
+Keep the order find_providers returned: it already ranks by strength of
+evidence and distance. Do not stretch a sub-specialist to fit (e.g. a spine
+surgeon for knee pain) or promote one above a general specialist match.
+
 Hard rule: a facility is a specialist match ONLY if find_providers returned it
 in a success list. Never call anything else a specialist, and never invent a
 clinical justification for a facility whose specialty you do not know.
@@ -577,6 +591,59 @@ app = builder.compile()
 # changing one import. Keep both engines importable until the regression
 # harness says their behaviour matches; then delete agent.py.
 # ---------------------------------------------------------------------------
+# personal identifiers never go to the log
+_TRACE_DROP_KEYS = {"name"}
+# coordinates rounded like request_log does
+_TRACE_COARSE_KEYS = ("lat", "lng")
+
+
+def _trace_args(args: dict) -> dict:
+    out = {}
+    for k, v in (args or {}).items():
+        if k in _TRACE_DROP_KEYS:
+            continue
+        if k.endswith(_TRACE_COARSE_KEYS) and isinstance(v, (int, float)):
+            v = round(v, 2)
+        out[k] = v
+    return out
+
+
+def _turn_trace(messages) -> dict:
+    """What the agent DID on the latest turn: every tool it called, with
+    (privacy-trimmed) arguments and a one-line result summary.
+
+    Scans only messages after the last HumanMessage, so in a conversation it
+    describes THIS turn, not the whole history. An empty `tools` list is the
+    signal that the model answered from memory without searching again.
+    """
+    humans = [i for i, m in enumerate(messages) if isinstance(m, HumanMessage)]
+    turn = messages[(humans[-1] + 1) if humans else 0:]
+    results = {m.tool_call_id: _summarize(_payload(m))
+               for m in turn if isinstance(m, ToolMessage)}
+    calls = []
+    for m in turn:
+        for c in getattr(m, "tool_calls", None) or []:
+            calls.append({"tool": c["name"], "args": _trace_args(c.get("args")),
+                          "result": results.get(c.get("id"), "(no result)")[:300]})
+    return {"tools": calls,
+            "llm_calls": sum(isinstance(m, AIMessage) for m in turn)}
+
+
+def run_agent_traced(user_request: str) -> tuple[str, dict]:
+    """run_agent, plus the per-turn tool trace for logging."""
+    final_state = app.invoke({
+        "messages": [HumanMessage(content=user_request)],
+        "confirmed_providers": set(),
+        "offered_facilities": set(),
+        "tool_errors": [],
+        "llm_calls": 0,
+    })
+    msgs = final_state["messages"]
+    trace = _turn_trace(msgs)
+    trace["llm_calls"] = final_state.get("llm_calls", trace["llm_calls"])
+    return _text(msgs[-1]), trace
+
+
 def run_agent(user_request: str) -> str:
     final_state = app.invoke({
         "messages": [HumanMessage(content=user_request)],
@@ -641,6 +708,11 @@ def _get_conversation_app():
 
 
 def continue_conversation(user_message: str, thread_id: str) -> str:
+    return continue_conversation_traced(user_message, thread_id)[0]
+
+
+def continue_conversation_traced(user_message: str,
+                                 thread_id: str) -> tuple[str, dict]:
     """Run ONE turn of a multi-turn conversation identified by thread_id.
 
     First turn for a thread: seed the full initial state. Later turns: pass only
@@ -668,7 +740,10 @@ def continue_conversation(user_message: str, thread_id: str) -> str:
         turn["offered_facilities"] = set()
 
     final_state = conv.invoke(turn, config=config)
-    return _text(final_state["messages"][-1])
+    msgs = final_state["messages"]
+    trace = _turn_trace(msgs)
+    trace["llm_calls"] = final_state.get("llm_calls", trace["llm_calls"])
+    return _text(msgs[-1]), trace
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ import request_log
 # BOTH agent and agent_langgraph; the second import silently shadowed the first,
 # so agent.py was dead code that merely looked live. Now it's explicit.
 # run_agent = single-shot (/care); continue_conversation = multi-turn (/chat).
-from agent_langgraph import run_agent, continue_conversation
+from agent_langgraph import run_agent_traced, continue_conversation_traced
 from security import require_api_key, rate_limit
 import sessions
 from dotenv import load_dotenv
@@ -121,7 +121,7 @@ def care(
             f"reports these symptoms: {req.symptoms}. "
             f"Find the nearest appropriate specialists."
         )
-        answer = run_agent(user_request)
+        answer, trace = run_agent_traced(user_request)
         # may have been updated by the agent
         rec = tools._PATIENTS.get(patient_id, {})
         request_log.log_interaction(
@@ -131,6 +131,7 @@ def care(
             lat=rec.get("lat", req.lat), lng=rec.get("lng", req.lng),
             backend=tools._BACKEND,
             latency_ms=round((time.perf_counter() - t0) * 1000),
+            trace=trace,
         )
         return {"answer": answer}
     except Exception as exc:
@@ -231,7 +232,8 @@ def chat(
 
     t0 = time.perf_counter()
     try:
-        answer = continue_conversation(user_message, thread_id=session_id)
+        answer, trace = continue_conversation_traced(
+            user_message, thread_id=session_id)
         rec = tools._PATIENTS.get(patient_id, {})  # reflects agent updates
         request_log.log_interaction(
             endpoint="/chat", user_text=req.message, answer=answer,
@@ -241,6 +243,7 @@ def chat(
             lat=rec.get("lat", req.lat), lng=rec.get("lng", req.lng),
             backend=tools._BACKEND,
             latency_ms=round((time.perf_counter() - t0) * 1000),
+            trace=trace,
         )
         return {"session_id": session_id, "answer": answer}
     except Exception as exc:

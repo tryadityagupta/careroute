@@ -74,7 +74,7 @@ def _coarse(v):
 
 def log_interaction(*, endpoint, user_text, answer, session_id=None, turn=None,
                     meds=None, name=None, lat=None, lng=None, backend=None,
-                    latency_ms=None, status="ok", error=None):
+                    latency_ms=None, status="ok", error=None, trace=None):
     """Emit one JSON line describing a single request/response.
 
     Never raises: logging must not take down a request. Any failure to log is
@@ -94,6 +94,12 @@ def log_interaction(*, endpoint, user_text, answer, session_id=None, turn=None,
             "meds": list(meds) if meds else [],
             "loc": {"lat": _coarse(lat), "lng": _coarse(lng)},
         }
+        if trace is not None:
+            # What the agent DID this turn: tools called (args trimmed of PII,
+            # coords rounded) and a one-line result each. tools == [] means it
+            # answered from memory without searching.
+            rec["llm_calls"] = trace.get("llm_calls")
+            rec["tools"] = trace.get("tools", [])
         if error is not None:
             rec["error"] = str(error)[:500]
         if _LOG_PII:
