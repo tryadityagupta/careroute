@@ -31,6 +31,9 @@ import os
 import time
 from math import radians, sin, cos, sqrt, atan2
 
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import requests
 
 from routing import annotate_road_distance
@@ -52,12 +55,10 @@ _OVERPASS_ENDPOINTS = [
 _MIN_RADIUS_M = 500
 _MAX_RADIUS_M = 30000
 
-# Fix C: on a transient outage, retry the SAME radius a couple of times with a
-# short backoff rather than escalating — a bigger query only makes an overloaded
-# server likelier to fail. Correctness never depends on this; only availability.
-_FETCH_ROUNDS = 2
-_RETRY_BACKOFF_S = 2
-_HTTP_TIMEOUT_S = 20
+# SPEED FIX: the mirrors used to be tried ONE AFTER ANOTHER, 20 s each, for two
+# rounds — up to ~122 s before giving up. Now all mirrors are queried IN
+# PARALLEL and the first good answer wins, so the worst case is one timeout.
+_HTTP_TIMEOUT_S = 12
 
 # ---------------------------------------------------------------------------
 # LOCAL FETCH CACHE — because every public Overpass instance is a shared,
@@ -85,14 +86,15 @@ def _cache_load() -> dict:
         return {}
 
 
+_CACHE_LOCK = threading.Lock()
+
+
 def _cache_save() -> None:
-    # Last-writer-wins under concurrency — fine for a single-user demo, the
-    # same caveat as the LIVE patient in server.py.
     try:
         os.makedirs(os.path.dirname(_CACHE_PATH), exist_ok=True)
-        with open(_CACHE_PATH, "w", encoding="utf-8") as f:
+        with _CACHE_LOCK, open(_CACHE_PATH, "w", encoding="utf-8") as f:
             json.dump(_CACHE, f)
-    except OSError as e:
+    except (OSError, RuntimeError) as e:   # RuntimeError: dict changed mid-dump
         print(f"[osm] cache write failed (non-fatal): {e}")
 
 
@@ -110,6 +112,59 @@ def _cache_key(lat: float, lng: float, radius_m: int) -> str:
 
 
 _CACHE = _cache_load()
+
+
+def _find_cached(lat: float, lng: float, radius_m: int, now: float, fresh=True):
+    """Return a cache entry for this ~1 km cell whose radius is AT LEAST the one
+    requested. A 30 km fetch already contains everything within 8 km, so a
+    smaller-radius search never needs a new Overpass call. Results are filtered
+    back down to radius_m in _fetch_nearby, so the answer is unchanged.
+    fresh=False also accepts expired entries (for stale-if-error)."""
+    prefix = f"v{_QUERY_VERSION}|{lat:.2f},{lng:.2f},r"
+    best = None
+    for key, hit in list(_CACHE.items()):
+        if not key.startswith(prefix):
+            continue
+        try:
+            r = int(key[len(prefix):])
+        except ValueError:
+            continue
+        if r < radius_m:
+            continue
+        if fresh and now - hit["fetched_at"] >= _CACHE_TTL_S:
+            continue
+        if best is None or r < best[0]:
+            best = (r, hit)          # smallest sufficient radius = least filtering
+    return best[1] if best else None
+
+
+def _post_overpass(url: str, query: str, headers: dict):
+    resp = requests.post(url, data={"data": query},
+                         headers=headers, timeout=_HTTP_TIMEOUT_S)
+    resp.raise_for_status()
+    # .json() inside the worker: a mirror answering 200 with an HTML error page
+    # counts as a failure and the race continues with the other mirrors.
+    return resp.json().get("elements", [])
+
+
+def _race_mirrors(query: str, headers: dict):
+    """Query every mirror at once; return (elements, None) from the FIRST one
+    that succeeds, or (None, last_error) if all fail."""
+    ex = ThreadPoolExecutor(max_workers=len(_OVERPASS_ENDPOINTS))
+    futures = {ex.submit(_post_overpass, u, query, headers): u
+               for u in _OVERPASS_ENDPOINTS}
+    last_error = None
+    try:
+        for fut in as_completed(futures):
+            try:
+                return fut.result(), None
+            except (requests.RequestException, ValueError) as e:
+                last_error = e
+                print(f"[osm] {futures[fut]} failed: {str(e)[:90]}")
+        return None, last_error
+    finally:
+        # Don't wait for the slower mirrors once we have an answer.
+        ex.shutdown(wait=False, cancel_futures=True)
 
 
 def _haversine_km(lat1, lng1, lat2, lng2):
@@ -161,43 +216,24 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
     out center tags;
     """
     key = _cache_key(patient_lat, patient_lng, radius_m)
-    hit = _CACHE.get(key)
     now = time.time()
+    hit = _find_cached(patient_lat, patient_lng, radius_m, now)
     elements = None
 
-    if hit and now - hit["fetched_at"] < _CACHE_TTL_S:
+    if hit:
         elements = hit["elements"]                 # fresh cache: zero network
     else:
         headers = {"User-Agent": "CareRoute-demo/1.0 (learning project)"}
-        last_error = None
-        # Fix C: one pass over the mirrors, and if all fail transiently, back off
-        # briefly and try the SAME query again before declaring an outage — never
-        # a larger radius.
-        for round_i in range(_FETCH_ROUNDS):
-            if round_i:
-                time.sleep(_RETRY_BACKOFF_S)
-                print(
-                    f"[osm] retry round {round_i + 1} (same radius {radius_m} m)")
-            for url in _OVERPASS_ENDPOINTS:
-                try:
-                    resp = requests.post(url, data={"data": query},
-                                         headers=headers, timeout=_HTTP_TIMEOUT_S)
-                    resp.raise_for_status()
-                    # .json() stays inside the try: a mirror answering 200 with
-                    # an HTML error page falls through to the next mirror instead
-                    # of crashing the tool.
-                    elements = resp.json().get("elements", [])
-                    _CACHE[key] = {"fetched_at": now, "elements": elements}
-                    _cache_save()
-                    break
-                except requests.RequestException as e:
-                    last_error = e
-                    # str(e) shows the actual reason — "429 Client Error" (rate
-                    # limited) vs "504 Server Error" (overloaded) vs "Read timed
-                    # out" — so an outage is diagnosable from the log alone.
-                    print(f"[osm] {url} failed: {str(e)[:90]}")
-            if elements is not None:
-                break
+        t0 = time.perf_counter()
+        elements, last_error = _race_mirrors(query, headers)
+        print(f"[osm] overpass fetch r={radius_m} took "
+              f"{time.perf_counter() - t0:.1f}s ok={elements is not None}")
+        if elements is not None:
+            with _CACHE_LOCK:
+                _CACHE[key] = {"fetched_at": now, "elements": elements}
+            _cache_save()
+        else:
+            hit = _find_cached(patient_lat, patient_lng, radius_m, now, fresh=False)
 
         if elements is None and hit:
             # stale-if-error: every mirror is down, but we have seen this
@@ -234,6 +270,10 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
         lat = el.get("lat") or el.get("center", {}).get("lat")
         lng = el.get("lon") or el.get("center", {}).get("lon")
         if lat is None or lng is None:
+            continue
+        # A cache hit may come from a LARGER-radius fetch, so enforce the
+        # radius the caller actually asked for.
+        if _haversine_km(patient_lat, patient_lng, lat, lng) * 1000 > radius_m:
             continue
         name = tags.get("name")
         # Skip POIs with no name. The broadened query surfaces bare

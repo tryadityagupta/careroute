@@ -35,6 +35,7 @@ server.py switches engines by changing one line:
 import threading as _threading  # used only by the lazy initialiser below
 import json
 import re
+import time
 from typing import Annotated, TypedDict
 
 from dotenv import load_dotenv
@@ -104,7 +105,9 @@ Reason step by step:
    general aches, minor bleeding — use "General Medicine", or go straight to
    find_general_facilities. Reserve narrow specialties for clearly specialist
    needs (Cardiology for chest pain, Dermatology for a rash).
-2. Use get_patient_record to fetch the patient's location and history.
+2. The patient's location and medications are usually given inline in the
+   message as [record: ...]. Use those coordinates directly. Call
+   get_patient_record ONLY if no record is given in the message.
 3. Use find_providers to get the nearest matching specialists.
 4. Give a short, clear recommendation naming the providers and their distances,
    and briefly note any relevant item from the patient's history.
@@ -126,8 +129,8 @@ Location and details from the user's own words:
 
 Obtaining a medicine (not a diagnosis): if the user wants to BUY or pick up a
 medicine or over-the-counter drug — painkillers, antacids, ORS, cold medicine,
-etc. — the right provider is a PHARMACY. Call find_pharmacies (after
-get_patient_record for the location) and list the nearest ones with distance.
+etc. — the right provider is a PHARMACY. Call find_pharmacies (using the
+patient's coordinates) and list the nearest ones with distance.
 You are ROUTING to a provider, not prescribing: never recommend a specific
 medicine, dose, or brand, and never present a hospital or clinic as a pharmacy.
 If find_pharmacies returns match_found=false, say no pharmacy was found in the
@@ -409,6 +412,25 @@ def _text(message) -> str:
 # ---------------------------------------------------------------------------
 # 4) NODES — each is a plain function: full state in, partial update out.
 # ---------------------------------------------------------------------------
+def _compact(messages):
+    """SPEED FIX: shrink what is re-sent to the model every call.
+
+    Tool results from EARLIER turns (before the latest user message) can be
+    large JSON blobs, and every model call re-sends the whole history. The
+    earlier assistant answers already name the providers, so the raw tool
+    payloads are replaced with a stub. The ToolMessages themselves stay, so
+    OpenAI's tool_call / tool_result pairing remains valid. The guard is
+    unaffected — it reads the state sets, not the message text.
+    """
+    humans = [i for i, m in enumerate(messages) if isinstance(m, HumanMessage)]
+    last_human = humans[-1] if humans else 0
+    return [
+        m.model_copy(update={"content": "(earlier tool result omitted)"})
+        if i < last_human and isinstance(m, ToolMessage) else m
+        for i, m in enumerate(messages)
+    ]
+
+
 def agent(state: CareRouteState):
     """REASON: ask the model what to do next.
 
@@ -420,9 +442,10 @@ def agent(state: CareRouteState):
     if not messages or not isinstance(messages[0], SystemMessage):
         messages = [SystemMessage(content=SYSTEM_PROMPT), *messages]
 
-    response = llm_with_tools.invoke(messages)
-
+    t0 = time.perf_counter()
+    response = llm_with_tools.invoke(_compact(messages))
     n = state.get("llm_calls", 0) + 1
+    print(f" [call {n}] LLM took {time.perf_counter() - t0:.1f}s")
     for call in response.tool_calls:
         print(f" [call {n}] model called: {call['name']}({call['args']})")
     return {"messages": [response], "llm_calls": n}
@@ -438,7 +461,9 @@ def tools(state: CareRouteState):
     (a success list from find_providers) or `offered` (anything else).
     The guard's verdict is only as good as this classification.
     """
+    t0 = time.perf_counter()
     result = _tool_node.invoke(state)
+    print(f"          tools took {time.perf_counter() - t0:.1f}s")
 
     confirmed = set(state.get("confirmed_providers") or ())
     offered = set(state.get("offered_facilities") or ())

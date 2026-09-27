@@ -64,6 +64,15 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
 
 
+def _record_summary(rec: dict) -> str:
+    """The patient record, inline. SPEED FIX: the server already knows the
+    location and meds, so hand them to the model directly instead of making it
+    spend a full LLM round trip calling get_patient_record first."""
+    meds = ", ".join(rec.get("current_medications") or []) or "none"
+    return (f"name={rec.get('name')}, lat={rec.get('lat')}, lng={rec.get('lng')}, "
+            f"area={rec.get('area')}, current_medications={meds}")
+
+
 def _parse_meds(meds: str | None) -> list[str]:
     """Split a free-text meds field (commas or newlines) into a clean list."""
     return [m.strip() for m in (meds or "").replace("\n", ",").split(",") if m.strip()]
@@ -108,7 +117,8 @@ def care(
     t0 = time.perf_counter()
     try:
         user_request = (
-            f"Patient {patient_id} reports these symptoms: {req.symptoms}. "
+            f"Patient {patient_id} [record: {_record_summary(tools._PATIENTS[patient_id])}] "
+            f"reports these symptoms: {req.symptoms}. "
             f"Find the nearest appropriate specialists."
         )
         answer = run_agent(user_request)
@@ -187,7 +197,8 @@ def chat(
             "current_medications": _parse_meds(req.meds),
         }
         user_message = (
-            f"Patient {patient_id} reports these symptoms: {req.message}. "
+            f"Patient {patient_id} [record: {_record_summary(tools._PATIENTS[patient_id])}] "
+            f"reports these symptoms: {req.message}. "
             f"Find the nearest appropriate specialists."
         )
     else:
@@ -211,12 +222,11 @@ def chat(
         if req.lat is not None and req.lng is not None:
             rec["lat"], rec["lng"] = req.lat, req.lng
         user_message = (
-            f"Patient {patient_id} (same conversation) now says: {req.message}. "
+            f"Patient {patient_id} (same conversation) [current record: "
+            f"{_record_summary(rec)}] now says: {req.message}. "
             f"Treat this on its own merits — it may add detail to the earlier "
             f"complaint or raise a NEW need (e.g. wanting painkillers, which "
-            f"means a pharmacy). Run the search that fits THIS message. Their "
-            f"record may have been updated, so re-check it with "
-            f"get_patient_record if relevant."
+            f"means a pharmacy). Run the search that fits THIS message."
         )
 
     t0 = time.perf_counter()

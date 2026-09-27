@@ -24,12 +24,24 @@ self-hosted OSRM (or a paid routing provider) for real load.
 """
 
 import os
+import time
 from math import radians, sin, cos, sqrt, atan2
 
 import requests
 
 _OSRM_BASE = os.getenv("OSRM_BASE_URL", "https://router.project-osrm.org")
-_OSRM_TIMEOUT_S = 8
+# SPEED FIX: was 8 s. OSRM is a nice-to-have (we fall back to straight-line
+# distance), so it should never hold a patient's answer hostage for long.
+_OSRM_TIMEOUT_S = 3
+
+# Road distances between two points barely change, so remember them. Keyed on
+# coordinates rounded to ~11 m; one entry per (origin, destination) pair.
+_ROUTE_CACHE: dict = {}
+_ROUTE_CACHE_MAX = 20000
+
+
+def _rkey(origin_lat, origin_lng, lat, lng):
+    return (round(origin_lat, 4), round(origin_lng, 4), round(lat, 4), round(lng, 4))
 
 
 def haversine_km(lat1, lng1, lat2, lng2):
@@ -52,6 +64,10 @@ def road_distances(origin_lat, origin_lng, dests):
     if not dests:
         return []
 
+    keys = [_rkey(origin_lat, origin_lng, lat, lng) for lat, lng in dests]
+    if all(k in _ROUTE_CACHE for k in keys):
+        return [_ROUTE_CACHE[k] for k in keys]       # all cached: zero network
+
     # OSRM speaks {lng},{lat}. The first coordinate is the source; the rest are
     # destinations. sources=0 tells OSRM to compute only FROM the origin, which
     # keeps the response a single row instead of a full NxN matrix.
@@ -61,8 +77,10 @@ def road_distances(origin_lat, origin_lng, dests):
     url = f"{_OSRM_BASE}/table/v1/driving/{coords}"
     params = {"sources": "0", "annotations": "distance,duration"}
 
+    t0 = time.perf_counter()
     try:
         resp = requests.get(url, params=params, timeout=_OSRM_TIMEOUT_S)
+        print(f"[routing] OSRM took {time.perf_counter() - t0:.1f}s")
         resp.raise_for_status()
         data = resp.json()
         if data.get("code") != "Ok":
@@ -89,6 +107,9 @@ def road_distances(origin_lat, origin_lng, dests):
                 "distance_km": round(d_m / 1000, 2),
                 "duration_min": round(t_s / 60) if t_s is not None else None,
             })
+        if len(_ROUTE_CACHE) > _ROUTE_CACHE_MAX:
+            _ROUTE_CACHE.clear()                     # crude, but bounded
+        _ROUTE_CACHE.update(zip(keys, out))
         return out
 
     except (requests.RequestException, ValueError, KeyError, IndexError) as e:
