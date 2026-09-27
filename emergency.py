@@ -18,6 +18,7 @@ against an authoritative per-country source.
 
 import json
 import os
+import re
 import time
 
 import requests
@@ -111,6 +112,24 @@ def local_emergency_number(lat, lng):
     return _NUMBERS.get(cc, _DEFAULT_NUMBER), cc
 
 
+# OSM tags plenty of single-doctor or single-specialty practices as
+# amenity=hospital ("Dr Ramesh Dalwai Spine Surgeon" was offered as an ER for
+# chest pain). For an EMERGENCY list, skip anything whose name says it is a
+# doctor's practice or a narrow specialty, and anything tagged emergency=no.
+_NOT_AN_ER = re.compile(
+    r"^dr\.?\s|\bspine\b|\beye\b|ophthalm|dental|dentist|\bskin\b|\bhair\b|"
+    r"cosmetic|\bivf\b|fertility|physiotherap|ayurved|homo?eopath|\bdiagnostic",
+    re.I)
+
+
+def _er_candidates(facilities):
+    hosp = [f for f in osm._dedupe(facilities)
+            if "hospital" in (f.get("facility") or "")
+            and f.get("_er") != "no"
+            and not _NOT_AN_ER.search(f["name"])]
+    return hosp
+
+
 def get_emergency_help(patient_lat: float, patient_lng: float) -> dict:
     """Return the LOCAL emergency number to call NOW, plus the nearest hospitals
     (which have emergency departments). Call this FIRST for any medical
@@ -125,12 +144,15 @@ def get_emergency_help(patient_lat: float, patient_lng: float) -> dict:
     try:
         facilities, err = osm._fetch_nearby(patient_lat, patient_lng, 8000)
         if not err and facilities:
-            hosp = [f for f in osm._dedupe(facilities)
-                    if f.get("facility") == "hospital"][:3]
+            hosp = _er_candidates(facilities)[:3]
             osm.annotate_road_distance(patient_lat, patient_lng, hosp)
             hospitals = [{"name": h["name"], "distance_km": h["distance_km"],
-                          "duration_min": h.get("duration_min"),
-                          "distance_type": h.get("distance_type")}
+                          "drive_min_no_traffic": h.get("drive_min_no_traffic"),
+                          "distance_type": h.get("distance_type"),
+                          # "yes" only when OSM says so; otherwise unknown —
+                          # the model must not promise an ER that isn't tagged.
+                          "emergency_department": ("yes" if h.get("_er") == "yes"
+                                                   else "not confirmed")}
                          for h in hosp]
     except Exception as e:                          # never let hospitals break the number
         print(f"[emergency] hospital lookup failed (non-fatal): {str(e)[:60]}")
@@ -141,7 +163,9 @@ def get_emergency_help(patient_lat: float, patient_lng: float) -> dict:
         "country": cc,
         "advice": (f"This may be a medical emergency. Tell the user to call {number} "
                    "immediately, or go to the nearest emergency department. State "
-                   "this FIRST, before any specialist recommendation."),
+                   "this FIRST, before any specialist recommendation. An ambulance "
+                   "is preferable to driving themselves: the crew can start care on "
+                   "the way. Drive times are without traffic."),
         "nearest_hospitals": hospitals,             # hospitals all have an ER
         "disclaimer": ("CareRoute cannot contact emergency services — the user must "
                        "call. Numbers are best-effort by location; 112 reaches "

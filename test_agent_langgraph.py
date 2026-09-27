@@ -162,6 +162,63 @@ def test_turn_trace_records_tools_without_pii():
     assert trace["llm_calls"] == 3
 
 
+def test_emergency_sticks_across_turns():
+    """Replays the real 2026-09-27 chat: chest pain (emergency) -> "does Maya
+    Hospital do cardiology?" -> "too far, traffic, what do I do?". On turn 3
+    the model suggested a small clinic and never mentioned 112/108. From the
+    first emergency on, every later turn must (a) carry the emergency context
+    in the prompt and (b) contain the emergency number, enforced in code."""
+    import uuid
+    import emergency
+    import osm
+    real_fetch, real_cc = osm._fetch_nearby, emergency._country_code
+    osm._fetch_nearby = lambda *a, **k: ([], None)   # no network in tests
+    emergency._country_code = lambda lat, lng: "IN"
+    thread = "t-" + uuid.uuid4().hex
+    try:
+        model = ScriptedModel([
+            AIMessage(content="", id="e1",
+                      tool_calls=[call("get_emergency_help", LOC, 1)]),
+            AIMessage(content="Call 112 (ambulance: 108) now.", id="e2"),
+            AIMessage(
+                content="Maya Hospital is not listed for cardiology.", id="e3"),
+            AIMessage(
+                content="Nearby options:\n1. Sai Clinic - 0.66 km", id="e4"),
+        ])
+        m.llm_with_tools = model
+        a1, _ = m.continue_conversation_traced("chest pain", thread)
+        a2, _ = m.continue_conversation_traced(
+            "does Maya do cardiology?", thread)
+        a3, t3 = m.continue_conversation_traced(
+            "too far, what do I do?", thread)
+    finally:
+        osm._fetch_nearby, emergency._country_code = real_fetch, real_cc
+
+    assert a1 == "Call 112 (ambulance: 108) now."   # already has it: untouched
+    for later in (a2, a3):
+        assert later.startswith("If the symptoms you described earlier")
+        assert "112" in later
+    sys3 = [x for x in model.seen[-1]
+            if isinstance(x, SystemMessage)][0].content
+    assert "EMERGENCY CONTEXT" in sys3               # prompt carries it on turn 3
+    assert t3["tools"] == []
+
+
+def test_emergency_list_skips_single_doctor_and_narrow_hospitals():
+    import emergency
+    facilities = [
+        {"name": "Maya Hospital", "facility": "hospital", "_er": ""},
+        {"name": "Dr Ramesh Dalwai Spine Surgeon",
+            "facility": "hospital", "_er": ""},
+        {"name": "City Eye Hospital", "facility": "hospital", "_er": ""},
+        {"name": "Rest Home Hospital", "facility": "hospital", "_er": "no"},
+        {"name": "Sai Clinic", "facility": "clinic", "_er": ""},
+        {"name": "Sakra World Hospital", "facility": "hospital", "_er": "yes"},
+    ]
+    names = [f["name"] for f in emergency._er_candidates(facilities)]
+    assert names == ["Maya Hospital", "Sakra World Hospital"]
+
+
 def test_tool_schema_kept_the_old_guidance():
     from langchain_core.utils.function_calling import convert_to_openai_tool
     fp = convert_to_openai_tool(m.find_providers)["function"]

@@ -139,7 +139,11 @@ def annotate_road_distance(origin_lat, origin_lng, items):
 
     for it, r in zip(items, road):
         it["distance_km"] = r["distance_km"]
-        it["duration_min"] = r["duration_min"]
+        # OSRM's duration is FREE-FLOW: an empty road at the speed limit. In
+        # Bengaluru at peak an 8 km trip shown as "11 min" can take an hour. The
+        # key name itself says so, because the model reads field names — a
+        # field called duration_min got presented as a real ETA.
+        it["drive_min_no_traffic"] = r["duration_min"]
         it["distance_type"] = "road"
     return items
 
@@ -153,4 +157,4 @@ if __name__ == "__main__":
     annotate_road_distance(12.9352, 77.6245, demo)
     for d in demo:
         print(d["name"], d.get("distance_type"), d["distance_km"], "km",
-              d.get("duration_min"), "min")
+              d.get("drive_min_no_traffic"), "min (no traffic)")

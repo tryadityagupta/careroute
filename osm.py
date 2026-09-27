@@ -371,6 +371,9 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
             "distance_km": _haversine_km(patient_lat, patient_lng, lat, lng),
             "is_pharmacy": is_pharmacy,
             "_signal": signal,
+            # OSM's emergency=yes|no tag (hospitals with / without an ER).
+            # "_"-prefixed: used by emergency.py, stripped before the model.
+            "_er": (tags.get("emergency") or "").lower(),
         }
         if matches_specialty:
             # Bengaluru OSM facilities often carry healthcare:speciality as a
@@ -467,6 +470,7 @@ def find_providers(specialty: str, patient_lat: float, patient_lng: float,
         for f in top:
             f.pop("_tag_tokens", None)
             f.pop("_signal", None)
+            f.pop("_er", None)
         return top
 
     # No specialty match at this radius. Instead of a bare count, hand back the
@@ -484,7 +488,7 @@ def find_providers(specialty: str, patient_lat: float, patient_lng: float,
     annotate_road_distance(patient_lat, patient_lng, alternatives)
     alternatives = [{"name": f["name"], "facility": f["facility"],
                      "distance_km": f["distance_km"],
-                     "duration_min": f.get("duration_min"),
+                     "drive_min_no_traffic": f.get("drive_min_no_traffic"),
                      "distance_type": f.get("distance_type"),
                      "is_specialist_match": False}
                     for f in alternatives]
@@ -539,6 +543,7 @@ def find_general_facilities(patient_lat: float, patient_lng: float,
     for f in top:
         f["is_specialist_match"] = False
         f.pop("_signal", None)
+        f.pop("_er", None)
     return {
         "disclaimer": ("These are general healthcare facilities, NOT verified "
                        "specialists. Present them only as general options."),
@@ -576,6 +581,7 @@ def find_pharmacies(patient_lat: float, patient_lng: float,
     top = shortlist[:k]
     for f in top:
         f.pop("_signal", None)
+        f.pop("_er", None)
     return {
         "disclaimer": "Nearby pharmacies/chemists for obtaining medicines.",
         "pharmacies": top,

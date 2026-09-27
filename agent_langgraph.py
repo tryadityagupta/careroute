@@ -80,7 +80,10 @@ class CareRouteState(TypedDict):
     offered_facilities: set[str]   # names from fallback / unverified results
     tool_errors: list[str]         # tools that FAILED (not: found nothing)
     llm_calls: int                 # model calls so far (the old `step`)
-    is_emergency: bool             # get_emergency_help fired -> skip specialist guard
+    # get_emergency_help fired THIS turn -> skip specialist guard
+    is_emergency: bool
+    emergency_number: str          # STICKY: set once get_emergency_help fires in a
+    # conversation, never reset per turn
 
 
 SYSTEM_PROMPT = """
@@ -166,6 +169,11 @@ have the department). Only after answering may you point to confirmed
 alternatives, and say plainly that they are different facilities and how far
 away they are. Never answer such a question by re-listing other facilities as
 if they were the ones asked about.
+
+Travel times: drive_min_no_traffic is an EMPTY-ROAD estimate. Present it as
+"about N min without traffic" and never as an arrival time. In a dense city at
+busy hours the real trip can take several times longer; if the user raises
+traffic or distance, agree and factor it in.
 
 Keep the order find_providers returned: it already ranks by strength of
 evidence and distance. Do not stretch a sub-specialist to fit (e.g. a spine
@@ -445,6 +453,22 @@ def _compact(messages):
     ]
 
 
+EMERGENCY_CONTEXT = """
+EMERGENCY CONTEXT FOR THIS CONVERSATION: earlier in this conversation the user
+described symptoms that may be a medical emergency, and the local emergency
+number is {number}. For EVERY answer from now on:
+- If the symptoms may still be ongoing, restate that they should call {number}
+  now. An ambulance comes to them, avoids the problem of driving through
+  traffic, and the crew can start care on the way.
+- The place to go in person is a HOSPITAL emergency department (use
+  get_emergency_help for the nearest ones). Never present a small clinic,
+  pharmacy or distant specialist as where to go for these symptoms. A
+  specialist is for follow-up AFTER emergency care.
+- If the user worries about distance or traffic, the answer is the ambulance,
+  or the nearest hospital emergency department — not a nearby clinic.
+"""
+
+
 def agent(state: CareRouteState):
     """REASON: ask the model what to do next.
 
@@ -453,8 +477,11 @@ def agent(state: CareRouteState):
     and a prompt update never invalidates a saved conversation.
     """
     messages = state["messages"]
+    prompt = SYSTEM_PROMPT
+    if state.get("emergency_number"):
+        prompt += EMERGENCY_CONTEXT.format(number=state["emergency_number"])
     if not messages or not isinstance(messages[0], SystemMessage):
-        messages = [SystemMessage(content=SYSTEM_PROMPT), *messages]
+        messages = [SystemMessage(content=prompt), *messages]
 
     t0 = time.perf_counter()
     response = llm_with_tools.invoke(_compact(messages))
@@ -483,6 +510,7 @@ def tools(state: CareRouteState):
     offered = set(state.get("offered_facilities") or ())
     errors = list(state.get("tool_errors") or ())
     is_emergency = bool(state.get("is_emergency"))
+    emergency_number = state.get("emergency_number") or ""
     for msg in result["messages"]:
         if not isinstance(msg, ToolMessage):
             continue
@@ -490,6 +518,8 @@ def tools(state: CareRouteState):
         print(f"          -> {_summarize(payload)}")
         if isinstance(payload, dict) and payload.get("emergency"):
             is_emergency = True               # emergency answers skip the guard
+            emergency_number = payload.get(
+                "emergency_number") or emergency_number or "112"
         if isinstance(payload, dict) and "error" in payload:
             errors.append(f"{msg.name}: {payload['error']}")
         elif msg.name == "find_providers" and isinstance(payload, list):
@@ -503,11 +533,30 @@ def tools(state: CareRouteState):
         "offered_facilities": offered,
         "tool_errors": errors,
         "is_emergency": is_emergency,
+        "emergency_number": emergency_number,
     }
 
 
+_DIGITS = re.compile(r"\d{2,}")
+
+
+def _emergency_reminder(answer: str, number: str) -> str:
+    """Code-enforced: once a conversation has had a possible emergency, every
+    later answer carries the emergency number. The model forgot it on a
+    follow-up about travel times and suggested a small clinic instead — the
+    prompt asks it not to, and this makes sure the number is there anyway."""
+    if not number:
+        return answer
+    if any(d in answer for d in _DIGITS.findall(number)):
+        return answer                      # the model already stated it
+    return (f"If the symptoms you described earlier are still going on, call "
+            f"{number} now rather than travelling yourself: an ambulance comes to "
+            f"you and the crew can start care on the way.\n\n" + answer)
+
+
 def guard(state: CareRouteState):
-    """Deterministic answer check — the same logic as agent.py.
+    """Deterministic answer check — the same logic as agent.py, plus the
+    sticky emergency reminder for later turns of an emergency conversation.
 
     If the answer must change, the model's message is REMOVED (add_messages
     honours RemoveMessage-by-id) and the guarded text is appended as the
@@ -515,16 +564,21 @@ def guard(state: CareRouteState):
     """
     final = state["messages"][-1]
     answer = _text(final)
-    # An emergency answer is a call-for-help + hospitals, not a specialist
-    # recommendation, so the specialist guard must not rewrite it.
     if state.get("is_emergency"):
-        return {}
-    guarded = _guard_answer(
-        answer,
-        state.get("confirmed_providers") or set(),
-        state.get("offered_facilities") or set(),
-        state.get("tool_errors") or [],
-    )
+        # This turn's answer IS the emergency answer: call-for-help +
+        # hospitals, not a specialist recommendation, so the specialist
+        # guard must not rewrite it — but the number must be in it.
+        guarded = _emergency_reminder(
+            answer, state.get("emergency_number") or "")
+    else:
+        guarded = _guard_answer(
+            answer,
+            state.get("confirmed_providers") or set(),
+            state.get("offered_facilities") or set(),
+            state.get("tool_errors") or [],
+        )
+        guarded = _emergency_reminder(
+            guarded, state.get("emergency_number") or "")
     if guarded == answer:
         return {}
 
@@ -637,6 +691,7 @@ def run_agent_traced(user_request: str) -> tuple[str, dict]:
         "offered_facilities": set(),
         "tool_errors": [],
         "llm_calls": 0,
+        "emergency_number": "",
     })
     msgs = final_state["messages"]
     trace = _turn_trace(msgs)
@@ -738,6 +793,8 @@ def continue_conversation_traced(user_message: str,
         # New conversation — initialise the accumulating trackers too.
         turn["confirmed_providers"] = set()
         turn["offered_facilities"] = set()
+        # sticky from here on: never reset per turn
+        turn["emergency_number"] = ""
 
     final_state = conv.invoke(turn, config=config)
     msgs = final_state["messages"]
