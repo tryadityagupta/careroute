@@ -231,8 +231,7 @@
             margin-top: 10px;
         }
 
-        textarea:focus-visible,
-        .coord:focus-visible {
+        textarea:focus-visible {
             outline: none;
             border-color: var(--orange);
             box-shadow: 0 0 0 4px rgba(221, 84, 16, .14);
@@ -310,26 +309,28 @@
             animation: pulse 1.2s ease-in-out infinite;
         }
 
-        .manual {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-top: 16px;
-            padding-top: 16px;
-            border-top: 1px dashed var(--line);
-            font-size: 0.9rem;
+        .kbd-hint {
+            margin: 6px 2px 0;
+            font-size: 0.8rem;
             color: var(--muted);
         }
 
-        .coord {
-            width: 96px;
+        .kbd-hint kbd {
             font: inherit;
-            color: var(--ink);
+            font-size: 0.75rem;
+            padding: 1px 6px;
+            border: 1px solid var(--line);
+            border-bottom-width: 2px;
+            border-radius: 5px;
             background: var(--field);
-            border: 1.5px solid var(--line);
-            border-radius: 8px;
-            padding: 7px 9px;
+        }
+
+        /* Phones and tablets have no Shift key: Enter adds a new line there and
+           the button sends, so the hint would be wrong. */
+        @media (pointer: coarse) {
+            .kbd-hint {
+                display: none;
+            }
         }
 
         .answer {
@@ -480,6 +481,9 @@
             <label class="field-label" for="symptoms">What's going on?</label>
             <textarea id="symptoms"
                 placeholder="e.g. chest tightness and shortness of breath since this morning"></textarea>
+            <p class="kbd-hint">Press <kbd>Enter</kbd> to send &middot; <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new
+                line</p>
+
 
             <div class="controls">
                 <button id="go">Find care</button>
@@ -498,11 +502,6 @@
                 </div>
             </details>
 
-            <div class="manual">
-                <span>Location off? Enter it by hand:</span>
-                lat <input class="coord" id="lat" inputmode="decimal" placeholder="12.9352">
-                lng <input class="coord" id="lng" inputmode="decimal" placeholder="77.6245">
-            </div>
 
             <div class="answer is-empty" id="answer">Your nearest providers will show up here.</div>
         </section>
@@ -549,19 +548,38 @@
             s.textContent = text;
         }
 
+        // The browser's position, if the user allows it. Kept in a variable now
+        // that there are no lat/lng boxes on the page.
+        let gps = null;
+
         function tryGeolocate() {
-            if (!navigator.geolocation) { setLoc("off", "Location not supported"); return; }
+            if (!navigator.geolocation) { setLoc("off", "Location not available \u2014 mention your area in your message"); return; }
             setLoc("wait", "Finding your location\u2026");
             navigator.geolocation.getCurrentPosition(
                 pos => {
-                    $("lat").value = pos.coords.latitude.toFixed(5);
-                    $("lng").value = pos.coords.longitude.toFixed(5);
-                    setLoc("ok", "Located");
+                    gps = { lat: +pos.coords.latitude.toFixed(5), lng: +pos.coords.longitude.toFixed(5) };
+                    setLoc("ok", "Using your location");
                 },
-                () => { setLoc("off", "Location blocked \u2014 add it below"); }
+                () => {
+                    setLoc("off", "Location off \u2014 mention your area in your message");
+                    const box = $("symptoms");
+                    if (!sessionId) box.placeholder = "e.g. knee pain since two days \u2014 I'm in HSR Layout, Bengaluru";
+                }
             );
         }
         tryGeolocate();
+
+        // Show where the server actually searched, so the user can catch a
+        // wrong match. Also updates when the user moves the search in chat
+        // ("actually I'm in Whitefield").
+        function showSearchedPlace(loc) {
+            if (!loc) return;
+            let text = "Near: " + loc.label;
+            if (loc.broad) text += " \u2014 add your area for closer results";
+            else if (loc.approximate) text += " (couldn't find the exact spot)";
+            setLoc("ok", text);
+        }
+
 
         // --- Multi-turn conversation state -----------------------------------
         // sessionId is null until the first answer; after that every submit is a
@@ -587,22 +605,35 @@
         });
         goBtn.insertAdjacentElement("afterend", resetBtn);
 
+        // Enter sends; Shift+Enter makes a new line (the usual chat convention).
+        // Exceptions: while typing with an input method (Hindi, Kannada, etc.)
+        // Enter confirms the word, and on phones/tablets there's no Shift key,
+        // so Enter keeps adding a new line and the button sends.
+        const touchOnly = window.matchMedia("(pointer: coarse)").matches;
+        function sendFromKeyboard(e) {
+            if (e.key !== "Enter" || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+            if (touchOnly && e.target.tagName === "TEXTAREA") return;
+            e.preventDefault();
+            if (!goBtn.disabled) goBtn.click();
+        }
+        $("symptoms").addEventListener("keydown", sendFromKeyboard);
+
         $("go").addEventListener("click", async () => {
             const symptoms = $("symptoms").value.trim();
             const name = $("pname").value.trim();
             const meds = $("pmeds").value.trim();
-            const lat = parseFloat($("lat").value);
-            const lng = parseFloat($("lng").value);
 
             if (!symptoms) {
                 setAnswer("is-error", "Add a couple of symptoms first.");
                 $("symptoms").focus();
                 return;
             }
-            if (isNaN(lat) || isNaN(lng)) {
-                setAnswer("is-error", "We need your location \u2014 allow it above, or type your lat and lng.");
-                return;
-            }
+            // GPS goes with the FIRST message only. Without it, the agent reads
+            // the place from the message itself (or asks). Any later change of
+            // location happens in the chat ("I'm in Whitefield now"), and
+            // follow-ups never resend GPS, so they can't undo that change.
+            const body = { message: symptoms, name, meds, session_id: sessionId };
+            if (!sessionId && gps) { body.lat = gps.lat; body.lng = gps.lng; }
 
             $("go").disabled = true;
             setAnswer("is-loading");
@@ -620,10 +651,17 @@
                         : { "Content-Type": "application/json" },
                     // message = this turn's text; session_id threads the conversation
                     // (null on turn 1) so the agent remembers earlier turns.
-                    body: JSON.stringify({ message: symptoms, lat, lng, name, meds, session_id: sessionId })
+                    body: JSON.stringify(body)
                 });
                 if (!res.ok) {
-                    const msg = res.status === 429
+                    // 400/422 from our server carry a message written for the
+                    // user (e.g. "We couldn't find ..."), so show it as-is.
+                    let detail = "";
+                    if (res.status === 400 || res.status === 422) {
+                        const d = await res.json().catch(() => ({}));
+                        if (typeof d.detail === "string") detail = d.detail;
+                    }
+                    const msg = detail ? detail : res.status === 429
                         ? "You're going a bit fast \u2014 wait a few seconds and try again."
                         : res.status === 401
                             ? "This endpoint needs an access key."
@@ -635,6 +673,7 @@
                 }
                 const data = await res.json();
                 sessionId = data.session_id || sessionId;   // remember the thread
+                showSearchedPlace(data.location);
                 const answer = (data.answer || "").trim();
                 if (answer) {
                     setAnswer("is-results", answer, true);

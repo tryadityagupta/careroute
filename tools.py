@@ -13,6 +13,9 @@ use each tool. We feed these descriptions to the model so it can choose.
 from emergency import get_emergency_help  # always available, all backends
 import json
 import os
+import re
+import threading
+import time
 import requests
 from math import radians, sin, cos, sqrt, atan2
 
@@ -69,6 +72,50 @@ def get_patient_record(patient_id: str) -> dict:
 # policy asks callers to be gentle — so cache and never look one up twice.
 _GEOCODE_CACHE: dict = {}
 _NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+# Nominatim's policy: at most 1 request per second. The fallback below can make
+# several requests for one place, so space them out.
+_NOMINATIM_LOCK = threading.Lock()
+_NOMINATIM_LAST = [0.0]
+# Restrict matches to these countries (comma-separated ISO codes). "in" keeps
+# "Prestige Shantiniketan" from matching a street abroad. Set it to "" to
+# search worldwide.
+_GEOCODE_COUNTRIES = os.getenv("CAREROUTE_GEOCODE_COUNTRIES", "in").strip()
+
+
+def _nominatim(query: str):
+    with _NOMINATIM_LOCK:
+        wait = 1.0 - (time.time() - _NOMINATIM_LAST[0])
+        if wait > 0:
+            time.sleep(wait)
+        _NOMINATIM_LAST[0] = time.time()
+    params = {"q": query, "format": "jsonv2", "limit": 1}
+    if _GEOCODE_COUNTRIES:
+        params["countrycodes"] = _GEOCODE_COUNTRIES
+    resp = requests.get(
+        _NOMINATIM_URL, params=params,
+        headers={"User-Agent": "CareRoute/1.0 (care-routing demo)"}, timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _fallback_queries(place: str) -> list[str]:
+    """Most specific first, then progressively broader.
+
+    Users type "Prestige Shantiniketan, Whitefield, Bangalore" or "near Forum
+    Mall Koramangala". An apartment name is often not in OpenStreetMap, but the
+    layout or area after it usually is. So: try the whole thing, then drop the
+    leading comma-separated part one at a time. Filler like "near" / "opposite"
+    is removed first because it only confuses the geocoder.
+    """
+    cleaned = re.sub(r"\b(near|opp(osite)?|behind|next to|beside|in front of|"
+                     r"close to|around)\b\.?", " ", place, flags=re.I)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,")
+    parts = [p.strip() for p in cleaned.split(",") if p.strip()]
+    queries = [", ".join(parts[i:]) for i in range(len(parts))] or [cleaned]
+    if place.strip() not in queries:
+        queries.insert(0, place.strip())
+    return queries[:4]            # bounded: at most ~4 s of Nominatim calls
 
 
 def geocode_place(place: str) -> dict:
@@ -78,33 +125,44 @@ def geocode_place(place: str) -> dict:
     Guwahati" — instead of trusting the patient's stored coordinates. Feed the
     returned lat/lng into find_providers / find_general_facilities /
     find_pharmacies so the search actually happens THERE. Returns
-    {lat, lng, display_name}, or an error. Never guess coordinates yourself, and
-    never claim a result is in a city you did not resolve here.
+    {lat, lng, display_name, matched_query, approximate}, or an error.
+    approximate=true means only a broader part of what the user typed was
+    found (e.g. the area, not the apartment) — say so. Never guess
+    coordinates yourself, and never claim a result is in a city you did not
+    resolve here.
     """
     key = (place or "").strip().lower()
     if not key:
         return {"error": "empty place"}
     if key in _GEOCODE_CACHE:
         return _GEOCODE_CACHE[key]
-    try:
-        resp = requests.get(
-            _NOMINATIM_URL,
-            params={"q": place, "format": "jsonv2", "limit": 1},
-            headers={"User-Agent": "CareRoute/1.0 (care-routing demo)"},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        hits = resp.json()
-    except requests.RequestException as e:
-        return {"error": f"Geocoding failed: {e}"}
-    if not hits:
-        return {"match_found": False,
-                "reason": f"Could not find a place named '{place}'."}
-    top = hits[0]
-    out = {"lat": float(top["lat"]), "lng": float(top["lon"]),
-           "display_name": top.get("display_name", place)}
-    _GEOCODE_CACHE[key] = out
-    return out
+    queries = _fallback_queries(place)
+    for q in queries:
+        try:
+            hits = _nominatim(q)
+        except requests.RequestException as e:
+            return {"error": f"Geocoding failed: {e}"}
+        if not hits:
+            continue
+        top = hits[0]
+        # place_rank: 16 and below is a city / district or bigger; 17+ is a
+        # suburb, neighbourhood, street or building. A FALLBACK match that is
+        # only a whole city ("Bangalore") would search around the city centre,
+        # kilometres from the user, so it is not accepted. If the user typed
+        # just a city themselves, it is accepted but flagged as broad.
+        rank = int(top.get("place_rank") or 30)
+        approximate = q != queries[0]
+        if approximate and rank <= 16:
+            break
+        out = {"lat": float(top["lat"]), "lng": float(top["lon"]),
+               "display_name": top.get("display_name", q),
+               "matched_query": q,
+               "approximate": approximate,
+               "broad": rank <= 16}
+        _GEOCODE_CACHE[key] = out
+        return out
+    return {"match_found": False,
+            "reason": f"Could not find a place named '{place}'."}
 
 
 def update_patient_record(patient_id: str, name: str = None,

@@ -127,6 +127,14 @@ Location and details from the user's own words:
   so later turns stay there. NEVER assume the stored point is in the city the
   user named, and NEVER state a result is in a specific city or locality unless
   you geocoded it — give distances and at most "near <the place you searched>".
+- If the record says location=UNKNOWN (the browser did not share it): look for
+  a place in the user's message — apartment, layout, street, landmark, area.
+  If there is one, geocode_place it, call update_patient_record(lat, lng,
+  area=<place>), then search there. If geocode_place returns approximate=true,
+  say you searched near the broader area it matched. If the message has no
+  place, do NOT search: ask for their area or a nearby landmark plus the city.
+  Exception — a possible emergency: FIRST tell them to call their local
+  emergency number now (112 in India, ambulance 108), THEN ask where they are.
 - If the user states the patient's NAME or MEDICATIONS in their message, call
   update_patient_record to save them onto the record.
 

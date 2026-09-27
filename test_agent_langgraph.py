@@ -219,6 +219,94 @@ def test_emergency_list_skips_single_doctor_and_narrow_hospitals():
     assert names == ["Maya Hospital", "Sakra World Hospital"]
 
 
+def _fake_nominatim(known):
+    """known: {query: (lat, lng, place_rank)} — anything else is not found."""
+    def fake(query):
+        if query in known:
+            lat, lng, rank = known[query]
+            return [{"lat": str(lat), "lon": str(lng), "place_rank": rank,
+                     "display_name": f"{query}, Bengaluru, Karnataka, India"}]
+        return []
+    return fake
+
+
+def test_geocode_falls_back_from_apartment_to_area_but_not_city():
+    import tools as t
+    real = t._nominatim
+    t._GEOCODE_CACHE.clear()
+    t._nominatim = _fake_nominatim({
+        "Whitefield, Bangalore": (12.97, 77.75, 19),   # suburb: fine
+        "Bangalore": (12.97, 77.59, 16),               # whole city
+    })
+    try:
+        g = t.geocode_place("Prestige Shantiniketan, Whitefield, Bangalore")
+        assert g["matched_query"] == "Whitefield, Bangalore" and g["approximate"]
+        # apartment AND area unknown: must NOT silently fall back to the city
+        g2 = t.geocode_place("Nowhere Towers, Unknownpura, Bangalore")
+        assert g2.get("match_found") is False
+        # but a user who types just the city gets it, flagged as broad
+        g3 = t.geocode_place("Bangalore")
+        assert g3["broad"] and not g3["approximate"]
+    finally:
+        t._nominatim = real
+        t._GEOCODE_CACHE.clear()
+
+
+def test_chat_location_from_gps_or_from_the_message():
+    """No location box on the page: GPS on the first message, otherwise the
+    user names the place in chat and the agent geocodes it."""
+    from fastapi.testclient import TestClient
+    import server
+    import tools as t
+    real = t._nominatim
+    t._GEOCODE_CACHE.clear()
+    t._nominatim = _fake_nominatim(
+        {"HSR Layout, Bengaluru": (12.91, 77.64, 20)})
+    try:
+        c = TestClient(server.app)
+
+        # 1) GPS blocked, no place in the message: allowed; the model is told
+        #    the location is UNKNOWN (and, per the prompt, asks for it).
+        model = ScriptedModel([AIMessage(content="Where are you?", id="q1")])
+        m.llm_with_tools = model
+        r = c.post("/chat", json={"message": "knee pain"})
+        assert r.status_code == 200 and r.json()["location"] is None
+        sent = model.seen[0][-1].content
+        assert "location=UNKNOWN" in sent
+        sid = r.json()["session_id"]
+        pid = server.sessions.get_session(sid)["patient_id"]
+
+        # 2) The user names the place in chat: the agent geocodes it and saves
+        #    it, and the page is told where the search now happens.
+        m.llm_with_tools = ScriptedModel([
+            AIMessage(content="", id="g1", tool_calls=[call(
+                "geocode_place", {"place": "HSR Layout, Bengaluru"}, 1)]),
+            AIMessage(content="", id="g2", tool_calls=[call(
+                "update_patient_record", {"patient_id": pid, "lat": 12.91,
+                                          "lng": 77.64, "area": "HSR Layout, Bengaluru"}, 2)]),
+            AIMessage(content="Searching near HSR Layout.", id="g3"),
+        ])
+        r2 = c.post("/chat", json={"message": "I'm in HSR Layout, Bengaluru",
+                                   "session_id": sid}).json()
+        assert t._PATIENTS[pid]["lat"] == 12.91
+        assert r2["location"] == {
+            "label": "HSR Layout, Bengaluru", "source": "chat"}
+
+        # 3) GPS on the first message; a follow-up without coordinates must
+        #    not move the patient.
+        m.llm_with_tools = ScriptedModel([AIMessage(content="ok", id="p1"),
+                                          AIMessage(content="ok", id="p2")])
+        r3 = c.post("/chat", json={"message": "fever", "lat": 12.97,
+                                   "lng": 77.64}).json()
+        pid3 = server.sessions.get_session(r3["session_id"])["patient_id"]
+        c.post("/chat", json={"message": "and a cough",
+                              "session_id": r3["session_id"]})
+        assert t._PATIENTS[pid3]["lat"] == 12.97
+    finally:
+        t._nominatim = real
+        t._GEOCODE_CACHE.clear()
+
+
 def test_tool_schema_kept_the_old_guidance():
     from langchain_core.utils.function_calling import convert_to_openai_tool
     fp = convert_to_openai_tool(m.find_providers)["function"]

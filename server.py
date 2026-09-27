@@ -46,8 +46,10 @@ app.add_middleware(
 
 class CareRequest(BaseModel):
     symptoms: str
-    lat: float
-    lng: float
+    # Either the browser's coordinates OR a place the user typed.
+    lat: float | None = None
+    lng: float | None = None
+    location_text: str | None = None
     name: str | None = None
     meds: str | None = None
 
@@ -59,6 +61,9 @@ class ChatRequest(BaseModel):
     message: str
     lat: float | None = None
     lng: float | None = None
+    # A place the user typed: apartment, layout, landmark. Takes precedence
+    # over lat/lng, because the user said it on purpose.
+    location_text: str | None = None
     name: str | None = None
     meds: str | None = None
     session_id: str | None = None
@@ -69,8 +74,64 @@ def _record_summary(rec: dict) -> str:
     location and meds, so hand them to the model directly instead of making it
     spend a full LLM round trip calling get_patient_record first."""
     meds = ", ".join(rec.get("current_medications") or []) or "none"
-    return (f"name={rec.get('name')}, lat={rec.get('lat')}, lng={rec.get('lng')}, "
-            f"area={rec.get('area')}, current_medications={meds}")
+    if rec.get("lat") is None or rec.get("lng") is None:
+        where = "location=UNKNOWN (browser location was not shared)"
+    else:
+        where = f"lat={rec.get('lat')}, lng={rec.get('lng')}, area={rec.get('area')}"
+    return f"name={rec.get('name')}, {where}, current_medications={meds}"
+
+
+def _moved_in_chat(rec: dict, before: tuple):
+    """If the AGENT changed the location this turn (the user named a place in
+    chat and it called update_patient_record), tell the page where it now
+    searches, so the "Near: ..." status stays truthful."""
+    after = (rec.get("lat"), rec.get("lng"))
+    if after != before and after[0] is not None:
+        return {"label": rec.get("area") or "the place you mentioned",
+                "source": "chat"}
+    return None
+
+
+def _short_place(display_name: str) -> str:
+    """'HSR Layout, Bengaluru South, Bengaluru Urban, Karnataka, 560102, India'
+    -> 'HSR Layout, Bengaluru South, Bengaluru Urban'."""
+    return ", ".join(p.strip() for p in display_name.split(",")[:3])
+
+
+def _resolve_location(location_text, lat, lng, required: bool):
+    """Turn what the user gave us into (lat, lng, area, info-for-the-UI).
+
+    A typed place wins over GPS. Returns None when nothing was given and it
+    is not required (a follow-up that doesn't change location). Raises a 422
+    with a message the page shows as-is when a typed place can't be found.
+    """
+    text = (location_text or "").strip()
+    if text:
+        if len(text) > 200:
+            raise HTTPException(422, "That location is too long. Try just your "
+                                "area or a landmark, plus the city.")
+        g = tools.geocode_place(text)
+        if "lat" not in g:
+            if g.get("error"):
+                raise HTTPException(422, "We couldn't look that place up right "
+                                    "now. Try again in a moment, or allow "
+                                    "location access.")
+            raise HTTPException(422, f"We couldn't find \u201c{text}\u201d. Try "
+                                "your layout or area with the city, e.g. \u201cHSR "
+                                "Layout Sector 2, Bengaluru\u201d, or a well-known "
+                                "landmark near you.")
+        label = _short_place(g["display_name"])
+        return g["lat"], g["lng"], label, {
+            "label": label, "source": "typed",
+            "approximate": g.get("approximate", False),
+            "broad": g.get("broad", False)}
+    if lat is not None and lng is not None:
+        return lat, lng, "Current location", {
+            "label": "your current location", "source": "gps"}
+    if required:
+        raise HTTPException(400, "We need your location. Allow location access, "
+                            "or type your area or a nearby landmark.")
+    return None
 
 
 def _parse_meds(meds: str | None) -> list[str]:
@@ -102,14 +163,16 @@ def care(
     # person's location. A per-request uuid isolates them; the finally-block
     # deletes it so the dict can't grow without bound. Name and medications are
     # OPTIONAL — empty fields fall back to the anonymous behaviour.
+    lat, lng, area, loc_info = _resolve_location(
+        req.location_text, req.lat, req.lng, required=True)
     patient_id = "LIVE-" + uuid.uuid4().hex[:12]
     meds_list = _parse_meds(req.meds)
     tools._PATIENTS[patient_id] = {
         "patient_id": patient_id,
         "name": (req.name or "").strip() or "Live user",
-        "area": "Current location",
-        "lat": req.lat,
-        "lng": req.lng,
+        "area": area,
+        "lat": lat,
+        "lng": lng,
         "history": [],
         "current_medications": meds_list,
     }
@@ -133,7 +196,7 @@ def care(
             latency_ms=round((time.perf_counter() - t0) * 1000),
             trace=trace,
         )
-        return {"answer": answer}
+        return {"answer": answer, "location": loc_info}
     except Exception as exc:
         rec = tools._PATIENTS.get(patient_id, {})
         request_log.log_interaction(
@@ -180,20 +243,21 @@ def chat(
 
     if sess is None:
         # --- New conversation (turn 1) ---------------------------------------
-        if req.lat is None or req.lng is None:
-            raise HTTPException(
-                status_code=400,
-                detail="lat and lng are required to start a conversation.",
-            )
+        # Resolve BEFORE creating a session, so a place we can't find doesn't
+        # leave an orphan session behind. No location at all is allowed: the
+        # agent then takes the place from the message, or asks for it.
+        resolved = _resolve_location(
+            req.location_text, req.lat, req.lng, required=False)
+        lat, lng, area, loc_info = resolved or (None, None, None, None)
         patient_id = "LIVE-" + uuid.uuid4().hex[:12]
         session_id = sessions.create_session(patient_id)
         turn = 1
         tools._PATIENTS[patient_id] = {
             "patient_id": patient_id,
             "name": (req.name or "").strip() or "Live user",
-            "area": "Current location",
-            "lat": req.lat,
-            "lng": req.lng,
+            "area": area,
+            "lat": lat,
+            "lng": lng,
             "history": [],
             "current_medications": _parse_meds(req.meds),
         }
@@ -220,8 +284,14 @@ def chat(
                 rec["current_medications"].append(med)
         if (req.name or "").strip():
             rec["name"] = req.name.strip()
-        if req.lat is not None and req.lng is not None:
-            rec["lat"], rec["lng"] = req.lat, req.lng
+        # The page sends location on a follow-up only when the user CHANGED
+        # it. (It used to resend GPS every turn, silently undoing a location
+        # the agent had set from the conversation, e.g. "she is in Guwahati".)
+        loc_info = None
+        moved = _resolve_location(req.location_text, req.lat, req.lng,
+                                  required=False)
+        if moved:
+            rec["lat"], rec["lng"], rec["area"], loc_info = moved
         user_message = (
             f"Patient {patient_id} (same conversation) [current record: "
             f"{_record_summary(rec)}] now says: {req.message}. "
@@ -230,11 +300,14 @@ def chat(
             f"means a pharmacy). Run the search that fits THIS message."
         )
 
+    before = (tools._PATIENTS[patient_id].get("lat"),
+              tools._PATIENTS[patient_id].get("lng"))
     t0 = time.perf_counter()
     try:
         answer, trace = continue_conversation_traced(
             user_message, thread_id=session_id)
         rec = tools._PATIENTS.get(patient_id, {})  # reflects agent updates
+        loc_info = _moved_in_chat(rec, before) or loc_info
         request_log.log_interaction(
             endpoint="/chat", user_text=req.message, answer=answer,
             session_id=session_id, turn=turn,
@@ -245,7 +318,7 @@ def chat(
             latency_ms=round((time.perf_counter() - t0) * 1000),
             trace=trace,
         )
-        return {"session_id": session_id, "answer": answer}
+        return {"session_id": session_id, "answer": answer, "location": loc_info}
     except Exception as exc:
         rec = tools._PATIENTS.get(patient_id, {})
         request_log.log_interaction(
