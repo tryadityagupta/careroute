@@ -151,10 +151,64 @@ client sends back on every follow-up. Under the hood:
 - `sessions.py` sweeps idle sessions (30-minute TTL, hard cap of 5000) and frees
   their patient records.
 
-**Scaling caveat** (the interview point): the checkpointer, sessions, and rate-limit
-buckets all live in process memory, so they are per-replica and lost on restart.
-Swap `MemorySaver` for a DB-backed saver (Sqlite/Postgres) and move sessions and
-rate limits to Redis to run more than one replica.
+Sessions, patient records and checkpoints live in shared stores when
+configured, so any replica can serve any turn — see **Stateless replicas** below.
+
+## Stateless replicas
+
+Any request can land on any replica, and any replica can be killed at any
+moment, without losing a conversation. Everything a later request depends on
+lives outside the process:
+
+| State | Single replica (no config) | Shared (`REDIS_URL` + `DATABASE_URL`) |
+|---|---|---|
+| Conversation transcript | LangGraph `MemorySaver` | Postgres checkpointer (`langgraph-checkpoint-postgres`) |
+| Sessions + turn counter | dict in `sessions.py` | Redis hash with native TTL |
+| Live patient records | dict | Redis JSON with native TTL (`patient_store.py`) |
+| Rate limit + daily cap | dict | Redis, atomic Lua token bucket on Redis's clock |
+
+Design points:
+
+- **Turn lock.** Statelessness creates a new race: two turns of one
+  conversation (a double click, a retry) running at once on two replicas would
+  both read the same checkpoint and lose a turn. A per-session Redis lock
+  (`SET NX EX`, compare-and-delete release) makes turns of a conversation
+  sequential; the second gets a 409. Different conversations stay fully
+  parallel.
+- **One checkpoint per turn.** Turns run with `durability="exit"`, writing one
+  checkpoint when the turn ends instead of one per graph step (~5-10x fewer
+  writes).
+- **Failure modes are chosen, not accidental.** Redis or Postgres down → 503
+  with an "if this is an emergency call 112" message; the rate limiter fails
+  *open* (a Redis blip shouldn't take the service down); `/healthz` takes a
+  replica that can't reach its stores out of rotation.
+- **Fail fast on misconfiguration.** `CAREROUTE_REQUIRE_SHARED_STATE=1` makes a
+  replica refuse to boot without Redis/Postgres, instead of silently running
+  in memory mode and splitting conversations.
+- **Retention.** Redis forgets idle sessions by TTL; `python checkpoints.py
+  prune` deletes idle conversations from Postgres in batches (run it on a
+  schedule), so symptom/medication history isn't kept longer than needed.
+
+**Proof:** `test_stateless.py` boots real replica *processes* against real
+Redis and Postgres with a mock LLM (`mock_llm.py`, no API key), and CI runs it
+before every deploy:
+
+```
+PASS  turn 1 on A, turn 2 on B: B saw history + meds -> 'turns_seen=2 | meds=ibuprofen, cetirizine'
+PASS  A killed (SIGKILL); turn 3 on B, turn 4 on brand-new C -> 'turns_seen=4 | meds=ibuprofen, cetirizine'
+PASS  10 requests alternating B/C: 5 allowed in total, then 429
+PASS  two simultaneous turns on B and C -> [200, 409]; the next turn sees exactly 3 turns
+```
+
+On the previous in-memory design, turn 2 on another replica silently started
+a **new** conversation (new session id, history and medications gone, no error
+logged), so the failure would only have shown up as confused answers under load.
+
+Run several replicas locally behind nginx:
+
+```bash
+docker compose up --build --scale app=3     # http://localhost:8000
+```
 
 ## Emergency triage
 
@@ -344,14 +398,20 @@ python test_agent_langgraph.py   # offline harness for the LangGraph engine:
 python tools.py                  # deterministic tools: record lookup, haversine
                                  # ranking, and BOTH structured-miss paths
 python security.py               # rate limiter + daily-cap self-test (pure stdlib)
-python sessions.py               # session create / sweep / cap self-test
+python sessions.py               # sessions + turn lock self-test (memory or Redis)
+python patient_store.py          # copy-on-read store self-test (memory or Redis)
 python request_log.py            # logging self-test (asserts PII omitted, coords coarsened)
 python osm.py                    # live Overpass + OSRM near Koramangala (needs
                                  # internet; also pre-warms the fetch cache)
 python mocktest.py               # exercises the OLD loop with a scripted model
 ```
 
-`python test_agent_langgraph.py` is the gate the CI pipeline runs before any build.
+Set `REDIS_URL` and `DATABASE_URL` and the same commands exercise the shared
+backends. With both set, `python test_stateless.py` runs the multi-replica
+proof described under **Stateless replicas**.
+
+CI runs the harness in both modes plus `test_stateless.py` (against Redis and
+Postgres service containers) before any build.
 
 ## Deployment
 
