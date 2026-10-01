@@ -12,7 +12,7 @@ Run it (bash/zsh):
 Then open http://localhost:8000
 """
 
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
@@ -28,6 +28,8 @@ import request_log
 from agent_langgraph import run_agent_traced, continue_conversation_traced
 from security import require_api_key, rate_limit
 import sessions
+import patient_store
+import shared_state
 from dotenv import load_dotenv
 load_dotenv()  # belt-and-braces; tools.py also loads .env before reading flags
 
@@ -134,6 +136,37 @@ def _resolve_location(location_text, lat, lng, required: bool):
     return None
 
 
+def _safe_get(patient_id: str) -> dict:
+    """Patient record for the ERROR log path: must never raise itself (the
+    error being logged may well be that the store is down)."""
+    try:
+        return patient_store.get(patient_id) or {}
+    except Exception:
+        return {}
+
+
+# A store outage is "try again shortly" (503), not a code bug (500). Redis
+# backs sessions and patient records; Postgres backs the conversation history.
+_STORE_DOWN = {"detail": "CareRoute is briefly unavailable. Please try again "
+               "in a moment, and if this is an emergency call 112 now."}
+if shared_state.USE_REDIS:
+    import redis as _redis_mod
+
+    @app.exception_handler(_redis_mod.exceptions.RedisError)
+    def _redis_down(request, exc):
+        print(f"[server] redis error: {exc}")
+        return JSONResponse(status_code=503, content=_STORE_DOWN)
+if shared_state.USE_POSTGRES:
+    import psycopg as _psycopg_mod
+    import psycopg_pool as _pool_mod
+
+    @app.exception_handler(_psycopg_mod.OperationalError)
+    @app.exception_handler(_pool_mod.PoolTimeout)
+    def _postgres_down(request, exc):
+        print(f"[server] postgres error: {exc}")
+        return JSONResponse(status_code=503, content=_STORE_DOWN)
+
+
 def _parse_meds(meds: str | None) -> list[str]:
     """Split a free-text meds field (commas or newlines) into a clean list."""
     return [m.strip() for m in (meds or "").replace("\n", ",").split(",") if m.strip()]
@@ -167,7 +200,7 @@ def care(
         req.location_text, req.lat, req.lng, required=True)
     patient_id = "LIVE-" + uuid.uuid4().hex[:12]
     meds_list = _parse_meds(req.meds)
-    tools._PATIENTS[patient_id] = {
+    record = {
         "patient_id": patient_id,
         "name": (req.name or "").strip() or "Live user",
         "area": area,
@@ -176,17 +209,21 @@ def care(
         "history": [],
         "current_medications": meds_list,
     }
+    # Stored (not just kept in a local) because the agent's tools read and
+    # update it by id. Short TTL: a single-shot request never needs it after
+    # it returns, and the TTL cleans up even if this replica dies mid-request.
+    patient_store.put(patient_id, record, ttl=600)
 
     t0 = time.perf_counter()
     try:
         user_request = (
-            f"Patient {patient_id} [record: {_record_summary(tools._PATIENTS[patient_id])}] "
+            f"Patient {patient_id} [record: {_record_summary(record)}] "
             f"reports these symptoms: {req.symptoms}. "
             f"Find the nearest appropriate specialists."
         )
         answer, trace = run_agent_traced(user_request)
         # may have been updated by the agent
-        rec = tools._PATIENTS.get(patient_id, {})
+        rec = patient_store.get(patient_id) or {}
         request_log.log_interaction(
             endpoint="/care", user_text=req.symptoms, answer=answer,
             meds=rec.get("current_medications", meds_list),
@@ -198,7 +235,7 @@ def care(
         )
         return {"answer": answer, "location": loc_info}
     except Exception as exc:
-        rec = tools._PATIENTS.get(patient_id, {})
+        rec = _safe_get(patient_id)
         request_log.log_interaction(
             endpoint="/care", user_text=req.symptoms, answer=None,
             meds=rec.get("current_medications", meds_list),
@@ -211,7 +248,11 @@ def care(
         raise
     finally:
         # Always clean up, even if run_agent raised — no leaked patient records.
-        tools._PATIENTS.pop(patient_id, None)
+        # (Best-effort: if the store is unreachable, the TTL cleans up.)
+        try:
+            patient_store.delete(patient_id)
+        except Exception:
+            pass
 
 
 @app.post("/chat")
@@ -220,6 +261,34 @@ def chat(
     _rl: None = Depends(rate_limit),
     _auth: None = Depends(require_api_key),
 ):
+    """One turn of a conversation, run under that conversation's turn lock.
+
+    Replicas are stateless, so two messages of ONE conversation (a double
+    click, a client retry) could otherwise run at the same time on two
+    replicas, both read the same checkpoint, and lose one turn. The lock makes
+    turns of a conversation strictly sequential; different conversations still
+    run fully in parallel. See sessions.py.
+    """
+    token = None
+    if req.session_id:
+        token = sessions.acquire_turn_lock(req.session_id)
+        if token is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Still working on your previous message — please wait "
+                       "for that answer before sending another.",
+            )
+    try:
+        return _chat_turn(req)
+    finally:
+        if token:
+            try:
+                sessions.release_turn_lock(req.session_id, token)
+            except Exception:
+                pass  # the lock's own TTL frees it
+
+
+def _chat_turn(req: ChatRequest):
     """Multi-turn sibling of /care.
 
     The FIRST call omits session_id and starts a conversation; the response
@@ -231,9 +300,10 @@ def chat(
     Unlike /care, the patient record is NOT deleted after the request — it lives
     for the length of the session and is swept when the session expires.
     """
-    # Opportunistic cleanup: expire idle sessions and free their patient records.
+    # Opportunistic cleanup for the MEMORY backend. In Redis mode this is a
+    # no-op: sessions and patient records expire by TTL on their own.
     for pid in sessions.sweep():
-        tools._PATIENTS.pop(pid, None)
+        patient_store.delete(pid)
 
     if not req.message.strip():
         raise HTTPException(
@@ -250,9 +320,7 @@ def chat(
             req.location_text, req.lat, req.lng, required=False)
         lat, lng, area, loc_info = resolved or (None, None, None, None)
         patient_id = "LIVE-" + uuid.uuid4().hex[:12]
-        session_id = sessions.create_session(patient_id)
-        turn = 1
-        tools._PATIENTS[patient_id] = {
+        rec = {
             "patient_id": patient_id,
             "name": (req.name or "").strip() or "Live user",
             "area": area,
@@ -261,8 +329,13 @@ def chat(
             "history": [],
             "current_medications": _parse_meds(req.meds),
         }
+        # Record first, session second: a session must never point at a
+        # record that doesn't exist yet.
+        patient_store.put(patient_id, rec)
+        session_id = sessions.create_session(patient_id)
+        turn = 1
         user_message = (
-            f"Patient {patient_id} [record: {_record_summary(tools._PATIENTS[patient_id])}] "
+            f"Patient {patient_id} [record: {_record_summary(rec)}] "
             f"reports these symptoms: {req.message}. "
             f"Find the nearest appropriate specialists."
         )
@@ -271,7 +344,7 @@ def chat(
         session_id = req.session_id
         patient_id = sess["patient_id"]
         turn = sessions.next_turn(session_id)
-        rec = tools._PATIENTS.get(patient_id)
+        rec = patient_store.get(patient_id)
         if rec is None:
             # The record was swept while the client still held the id.
             raise HTTPException(
@@ -292,6 +365,9 @@ def chat(
                                   required=False)
         if moved:
             rec["lat"], rec["lng"], rec["area"], loc_info = moved
+        # Write back (rec is a copy) — this also refreshes the record's TTL,
+        # so it lives exactly as long as an active conversation.
+        patient_store.put(patient_id, rec)
         user_message = (
             f"Patient {patient_id} (same conversation) [current record: "
             f"{_record_summary(rec)}] now says: {req.message}. "
@@ -300,13 +376,12 @@ def chat(
             f"means a pharmacy). Run the search that fits THIS message."
         )
 
-    before = (tools._PATIENTS[patient_id].get("lat"),
-              tools._PATIENTS[patient_id].get("lng"))
+    before = (rec.get("lat"), rec.get("lng"))
     t0 = time.perf_counter()
     try:
         answer, trace = continue_conversation_traced(
             user_message, thread_id=session_id)
-        rec = tools._PATIENTS.get(patient_id, {})  # reflects agent updates
+        rec = patient_store.get(patient_id) or {}  # reflects agent updates
         loc_info = _moved_in_chat(rec, before) or loc_info
         request_log.log_interaction(
             endpoint="/chat", user_text=req.message, answer=answer,
@@ -320,7 +395,7 @@ def chat(
         )
         return {"session_id": session_id, "answer": answer, "location": loc_info}
     except Exception as exc:
-        rec = tools._PATIENTS.get(patient_id, {})
+        rec = _safe_get(patient_id)
         request_log.log_interaction(
             endpoint="/chat", user_text=req.message, answer=None,
             session_id=session_id, turn=turn,
@@ -334,8 +409,40 @@ def chat(
         raise
 
 
-CODE_VERSION = "2026-08-18-langgraph-port"
+CODE_VERSION = "2026-10-stateless-replicas"
 GIT_SHA = os.environ.get("GIT_SHA", "local-dev")
+
+
+@app.get("/healthz")
+def healthz():
+    """Readiness probe: can THIS replica reach the shared stores?
+
+    Point the Container Apps readiness probe here. A replica that can't reach
+    Redis or Postgres is taken out of rotation instead of failing users'
+    requests; liveness should stay on a cheap endpoint like /version, so a
+    store outage doesn't make the platform restart every replica at once.
+    """
+    checks = {}
+    ok = True
+    if shared_state.USE_REDIS:
+        try:
+            shared_state.redis_client().ping()
+            checks["redis"] = "ok"
+        except Exception as e:
+            checks["redis"], ok = f"error: {type(e).__name__}", False
+    if shared_state.USE_POSTGRES:
+        try:
+            from agent_langgraph import _get_conversation_app
+            pool = _get_conversation_app().checkpointer.conn
+            with pool.connection(timeout=2) as conn:
+                conn.execute("SELECT 1")
+            checks["postgres"] = "ok"
+        except Exception as e:
+            checks["postgres"], ok = f"error: {type(e).__name__}", False
+    body = {"status": "ok" if ok else "degraded",
+            "mode": "shared" if shared_state.USE_REDIS else "memory",
+            "checks": checks}
+    return JSONResponse(status_code=200 if ok else 503, content=body)
 
 
 @app.get("/version")

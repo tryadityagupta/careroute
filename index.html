@@ -654,10 +654,12 @@
                     body: JSON.stringify(body)
                 });
                 if (!res.ok) {
-                    // 400/422 from our server carry a message written for the
-                    // user (e.g. "We couldn't find ..."), so show it as-is.
+                    // 400/409/422/503 from our server carry a message written for
+                    // the user (e.g. "We couldn't find ...", "Still working on your
+                    // previous message", or the outage note that points to 112),
+                    // so show it as-is.
                     let detail = "";
-                    if (res.status === 400 || res.status === 422) {
+                    if ([400, 409, 422, 503].includes(res.status)) {
                         const d = await res.json().catch(() => ({}));
                         if (typeof d.detail === "string") detail = d.detail;
                     }
