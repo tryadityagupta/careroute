@@ -18,6 +18,22 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # Real Redis + Postgres for the statelessness tests, as throwaway sidecars.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-retries 30
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: careroute
+          POSTGRES_PASSWORD: careroute
+          POSTGRES_DB: careroute
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U careroute" --health-interval 2s --health-retries 30
     steps:
       - name: Check out the code
         uses: actions/checkout@v4
@@ -30,8 +46,24 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run tests (the gate)
+      - name: Run tests (the gate) — memory mode
         run: python test_agent_langgraph.py
+
+      - name: Run tests — shared mode (Redis + Postgres)
+        env:
+          REDIS_URL: redis://localhost:6379/14
+          DATABASE_URL: postgresql://careroute:careroute@localhost:5432/careroute
+        run: |
+          python sessions.py
+          python patient_store.py
+          python security.py
+          python test_agent_langgraph.py
+
+      - name: Statelessness gate — 3 replicas, kill one mid-conversation
+        env:
+          REDIS_URL: redis://localhost:6379/13
+          DATABASE_URL: postgresql://careroute:careroute@localhost:5432/careroute
+        run: python test_stateless.py
 
       - name: Log in to Azure
         uses: azure/login@v2

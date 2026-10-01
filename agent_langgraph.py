@@ -34,6 +34,7 @@ server.py switches engines by changing one line:
 
 import threading as _threading  # used only by the lazy initialiser below
 import json
+import os
 import re
 import time
 from typing import Annotated, TypedDict
@@ -71,8 +72,8 @@ MAX_LLM_CALLS = 8  # same budget as agent.py's max_steps. The counter counts
 # REPLACES the old value — which is why the tools node merges the sets itself
 # before returning them.
 #
-# (Sets are fine in memory. If you later add a checkpointer — LangGraph's
-# persistence layer — and its serializer complains, switch to sorted lists.)
+# (Sets survive the Postgres checkpointer too: LangGraph's serializer encodes
+# them natively, and test_agent_langgraph.py runs against Postgres in CI.)
 # ---------------------------------------------------------------------------
 class CareRouteState(TypedDict):
     messages: Annotated[list, add_messages]
@@ -740,10 +741,11 @@ def run_agent(user_request: str) -> str:
 #     backed by a real earlier tool call stays trusted, so re-mentioning it in a
 #     later answer is not treated as a hallucination by the guard.
 #
-# SCALING CAVEAT (interview point): MemorySaver keeps threads in process memory,
-# so conversations live on ONE replica and are lost on restart. For multi-replica
-# or durable history, swap MemorySaver for a DB-backed saver (SqliteSaver /
-# PostgresSaver) — same graph, different checkpointer.
+# STATELESS REPLICAS: with DATABASE_URL set, threads are stored by a
+# PostgresSaver, so turn 2 can land on a different replica than turn 1 (or on a
+# replica that didn't exist yet) and still see the whole conversation. Without
+# it, a MemorySaver keeps threads in process memory (single replica only).
+# Old threads are pruned by `python checkpoints.py prune` (a scheduled job).
 # ---------------------------------------------------------------------------
 
 _conversation_app = None
@@ -762,12 +764,55 @@ def _get_conversation_app():
     if _conversation_app is None:
         with _conv_lock:
             if _conversation_app is None:
-                try:
-                    from langgraph.checkpoint.memory import MemorySaver
-                except ImportError:  # older/newer layout
-                    from langgraph.checkpoint import MemorySaver  # type: ignore
-                _conversation_app = builder.compile(checkpointer=MemorySaver())
+                _conversation_app = builder.compile(
+                    checkpointer=_make_checkpointer())
     return _conversation_app
+
+
+def _make_checkpointer():
+    """Postgres when DATABASE_URL is set (any replica can resume any thread),
+    otherwise the in-process MemorySaver (single replica: dev and tests).
+
+    Same graph either way — only the persistence layer changes.
+    """
+    import shared_state
+    if not shared_state.USE_POSTGRES:
+        try:
+            from langgraph.checkpoint.memory import MemorySaver
+        except ImportError:  # older/newer layout
+            from langgraph.checkpoint import MemorySaver  # type: ignore
+        return MemorySaver()
+
+    from psycopg.rows import dict_row
+    from psycopg_pool import ConnectionPool
+    from langgraph.checkpoint.postgres import PostgresSaver
+
+    # One pool per replica, shared by the request threadpool. Sized below the
+    # threadpool (40) on purpose: a turn holds a connection only while it
+    # loads or saves a checkpoint, not while it waits on the LLM.
+    pool = ConnectionPool(
+        conninfo=shared_state.DATABASE_URL,
+        min_size=1,
+        max_size=int(os.getenv("CAREROUTE_PG_POOL_MAX", "10")),
+        # Settings PostgresSaver requires. prepare_threshold=0 also keeps it
+        # working behind PgBouncer in transaction mode.
+        kwargs={"autocommit": True, "prepare_threshold": 0,
+                "row_factory": dict_row},
+        open=True,
+    )
+    # Close the pool explicitly at exit. Otherwise interpreter shutdown waits
+    # up to 5 s per pool thread, warns "couldn't stop thread 'pool-1-worker-0'",
+    # and Ctrl+C on the server hangs for ~20 s (seen on Windows).
+    import atexit
+    atexit.register(pool.close)
+    saver = PostgresSaver(pool)
+    # Create/upgrade the checkpoint tables. Idempotent, so dev "just works";
+    # in production run `python checkpoints.py migrate` once per deploy and
+    # set CAREROUTE_PG_AUTO_MIGRATE=0 so N replicas booting together don't
+    # all race to migrate.
+    if os.getenv("CAREROUTE_PG_AUTO_MIGRATE", "1") != "0":
+        saver.setup()
+    return saver
 
 
 def continue_conversation(user_message: str, thread_id: str) -> str:
@@ -804,7 +849,13 @@ def continue_conversation_traced(user_message: str,
         # sticky from here on: never reset per turn
         turn["emergency_number"] = ""
 
-    final_state = conv.invoke(turn, config=config)
+    # durability="exit": save ONE checkpoint when the turn finishes, instead
+    # of one per graph step (a turn is ~5-10 steps). That cuts checkpoint
+    # writes ~5-10x — at 10M users the difference between a small Postgres
+    # and a big one. Trade-off: if a replica dies mid-turn, that turn is not
+    # saved and the conversation resumes from the previous turn, which is
+    # exactly what the user expects after an error anyway.
+    final_state = conv.invoke(turn, config=config, durability="exit")
     msgs = final_state["messages"]
     trace = _turn_trace(msgs)
     trace["llm_calls"] = final_state.get("llm_calls", trace["llm_calls"])

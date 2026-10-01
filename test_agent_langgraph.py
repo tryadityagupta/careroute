@@ -18,6 +18,11 @@ import os
 # forced so results are deterministic regardless of your .env.
 os.environ.setdefault("OPENAI_API_KEY", "offline-test")
 os.environ["USE_REAL_PROVIDERS"] = ""
+# Shared mode (REDIS_URL set): give every run its own Redis namespace. Redis
+# state outlives the process — unlike the in-memory stores — so without this a
+# previous run's emptied rate-limit bucket makes this run fail with 429s.
+import uuid  # noqa: E402
+os.environ["CAREROUTE_KEY_PREFIX"] = f"careroute-test-{uuid.uuid4().hex[:8]}"
 
 from langchain_core.messages import AIMessage, SystemMessage  # noqa: E402
 
@@ -288,7 +293,7 @@ def test_chat_location_from_gps_or_from_the_message():
         ])
         r2 = c.post("/chat", json={"message": "I'm in HSR Layout, Bengaluru",
                                    "session_id": sid}).json()
-        assert t._PATIENTS[pid]["lat"] == 12.91
+        assert t.get_patient_record(pid)["lat"] == 12.91
         assert r2["location"] == {
             "label": "HSR Layout, Bengaluru", "source": "chat"}
 
@@ -301,7 +306,7 @@ def test_chat_location_from_gps_or_from_the_message():
         pid3 = server.sessions.get_session(r3["session_id"])["patient_id"]
         c.post("/chat", json={"message": "and a cough",
                               "session_id": r3["session_id"]})
-        assert t._PATIENTS[pid3]["lat"] == 12.97
+        assert t.get_patient_record(pid3)["lat"] == 12.97
     finally:
         t._nominatim = real
         t._GEOCODE_CACHE.clear()

@@ -11,6 +11,7 @@ use each tool. We feed these descriptions to the model so it can choose.
 """
 
 from emergency import get_emergency_help  # always available, all backends
+import copy
 import json
 import os
 import re
@@ -22,6 +23,7 @@ from math import radians, sin, cos, sqrt, atan2
 from dotenv import load_dotenv
 
 from data_source import load_patients, load_providers
+import patient_store
 
 # Load .env BEFORE reading any flags below. Previously USE_REAL_PROVIDERS was
 # read here at import time, BEFORE anything had called load_dotenv — so it only
@@ -38,7 +40,18 @@ _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 #     _PATIENTS = json.load(f)
 
 _PROVIDERS = load_providers()
+# STATIC demo patients (Synthea): read-only reference data, identical on every
+# replica. Live users' records and any edits live in patient_store instead, so
+# they survive across requests and replicas. Never write to this dict.
 _PATIENTS = load_patients()
+
+
+def _lookup_patient(patient_id: str) -> dict | None:
+    """Live/edited record first (shared store), then the static demo data."""
+    rec = patient_store.get(patient_id)
+    if rec is None:
+        rec = _PATIENTS.get(patient_id)
+    return rec
 
 
 def _haversine_km(lat1, lng1, lat2, lng2):
@@ -62,7 +75,7 @@ def get_patient_record(patient_id: str) -> dict:
     Use this FIRST when you need the patient's location or medical history.
     Returns demographics, location (lat/lng), conditions, and medications.
     """
-    record = _PATIENTS.get(patient_id)
+    record = _lookup_patient(patient_id)
     if record is None:
         return {"error": f"No patient found with id {patient_id}"}
     return record
@@ -175,9 +188,13 @@ def update_patient_record(patient_id: str, name: str = None,
     geocode_place first, then pass its lat/lng here (plus area=<the place>).
     Only the fields you pass are changed. Returns the updated record.
     """
-    rec = _PATIENTS.get(patient_id)
+    rec = _lookup_patient(patient_id)
     if rec is None:
         return {"error": f"No patient found with id {patient_id}"}
+    # Copy-on-write: edit a private copy and save it back to the shared store.
+    # (A static demo patient gets an edited copy in the store; the read-only
+    # reference data is never mutated, so replicas can't drift apart.)
+    rec = copy.deepcopy(rec)
     if name:
         rec["name"] = name.strip()
     if medications is not None:
@@ -191,6 +208,7 @@ def update_patient_record(patient_id: str, name: str = None,
         rec["lat"], rec["lng"] = float(lat), float(lng)
     if area:
         rec["area"] = area.strip()
+    patient_store.put(patient_id, rec)
     return rec
 
 

@@ -27,12 +27,10 @@ agnostic — the RateLimiter/DailyCounter classes know nothing about FastAPI, so
 they're unit-testable on their own (see __main__). Only the two thin dependency
 functions at the bottom touch FastAPI.
 
-SCALING CAVEAT (say this out loud in an interview): the counters live in
-process memory, so they are PER REPLICA. On one Container Apps replica that's
-exact; if you scale to N replicas a client gets up to N× the limit. The moment
-you run more than one replica, move the bucket store to Redis (same logic, keys
-in Redis instead of a dict). For a single small instance this is correct and
-has zero extra infrastructure.
+MULTI-REPLICA: in-memory counters would be PER REPLICA (N replicas = N× the
+limit). With REDIS_URL set, RedisRateLimiter / RedisDailyCounter below keep one
+bucket for the whole fleet — same token-bucket logic, run atomically in Redis.
+Without it, the in-memory classes are exact for a single replica.
 """
 
 import hmac
@@ -44,6 +42,8 @@ from math import ceil
 from dotenv import load_dotenv
 
 load_dotenv()  # so these flags work from .env as well as real shell vars
+
+import shared_state  # noqa: E402
 
 
 # --- Configuration (all overridable by environment) ------------------------
@@ -161,9 +161,88 @@ class DailyCounter:
             return True
 
 
-# Module-level singletons: one shared limiter + counter for the whole process.
-_limiter = RateLimiter(RATE_PER_MIN, BURST)
-_daily = DailyCounter(DAILY_CAP)
+# --- Shared (Redis) versions: same logic, one bucket across ALL replicas ----
+#
+# The in-memory classes above are exact on one replica, but with N replicas a
+# client gets up to N x the limit (each replica has its own bucket). These keep
+# the bucket in Redis instead. Two details worth saying in an interview:
+#
+#  * ATOMIC: read-refill-spend runs as ONE Lua script inside Redis, so two
+#    replicas checking the same IP at the same instant can't both spend the
+#    last token (a GET-then-SET from Python would race).
+#  * ONE CLOCK: the script uses Redis's own TIME, not each replica's clock, so
+#    clock skew between replicas can't mint or burn tokens.
+
+_BUCKET_LUA = """
+local rate  = tonumber(ARGV[1])
+local burst = tonumber(ARGV[2])
+local t     = redis.call('TIME')
+local now   = tonumber(t[1]) + tonumber(t[2]) / 1000000
+local b      = redis.call('HMGET', KEYS[1], 'tokens', 'last')
+local tokens = tonumber(b[1]) or burst
+local last   = tonumber(b[2]) or now
+tokens = math.min(burst, tokens + math.max(0, now - last) * rate)
+local allowed, retry = 0, 0
+if tokens >= 1 then
+  tokens = tokens - 1
+  allowed = 1
+elseif rate > 0 then
+  retry = (1 - tokens) / rate
+else
+  retry = 60
+end
+redis.call('HSET', KEYS[1], 'tokens', tostring(tokens), 'last', tostring(now))
+-- A bucket idle long enough to be full again carries no state: let it expire.
+local ttl = 60
+if rate > 0 then ttl = math.ceil(burst / rate) + 60 end
+redis.call('EXPIRE', KEYS[1], ttl)
+return {allowed, tostring(retry)}
+"""
+
+
+class RedisRateLimiter:
+    """Token bucket shared by every replica. Same check() contract as above."""
+
+    def __init__(self, client, rate_per_min: int, burst: int):
+        self.r = client
+        self.rate = rate_per_min / 60.0
+        self.burst = float(burst)
+        self._script = client.register_script(_BUCKET_LUA)
+
+    def check(self, key: str) -> tuple[bool, float]:
+        allowed, retry = self._script(
+            keys=[shared_state.key("ratelimit", key)],
+            args=[self.rate, self.burst])
+        return bool(int(allowed)), float(retry)
+
+
+class RedisDailyCounter:
+    """Global daily cap shared by every replica: one INCR per call on a key
+    named after the UTC date, which expires on its own two days later."""
+
+    def __init__(self, client, cap: int):
+        self.r = client
+        self.cap = cap
+
+    def allow(self) -> bool:
+        if self.cap <= 0:
+            return True
+        k = shared_state.key("daily", time.strftime("%Y-%m-%d", time.gmtime()))
+        pipe = self.r.pipeline()
+        pipe.incr(k)
+        pipe.expire(k, 2 * 86400)
+        n, _ = pipe.execute()
+        return n <= self.cap
+
+
+# Module-level singletons, shared across the process (and, in Redis mode,
+# across every replica).
+if shared_state.USE_REDIS:
+    _limiter = RedisRateLimiter(shared_state.redis_client(), RATE_PER_MIN, BURST)
+    _daily = RedisDailyCounter(shared_state.redis_client(), DAILY_CAP)
+else:
+    _limiter = RateLimiter(RATE_PER_MIN, BURST)
+    _daily = DailyCounter(DAILY_CAP)
 
 # Print the effective config at import time, matching tools.py's "[tools] ..."
 # style. This makes a misconfigured .env obvious immediately: if you didn't mean
@@ -200,12 +279,22 @@ def rate_limit(request: Request) -> None:
     Wire it FIRST on the route so even unauthenticated floods are throttled
     before we bother checking a key.
     """
-    if not _daily.allow():
+    try:
+        daily_ok = _daily.allow()
+        allowed, retry = _limiter.check(_client_ip(request))
+    except Exception as e:  # Redis unreachable
+        # FAIL OPEN, deliberately: a Redis blip should degrade abuse
+        # protection for a moment, not take the whole service down. (The
+        # session store, by contrast, fails CLOSED — without it we can't
+        # serve a conversation correctly.) The hard money stop stays the
+        # monthly spend limit in the OpenAI billing console.
+        print(f"[security] rate limiter unavailable, failing open: {e}")
+        return
+    if not daily_ok:
         raise HTTPException(
             status_code=503,
             detail="Daily capacity reached. Please try again tomorrow.",
         )
-    allowed, retry = _limiter.check(_client_ip(request))
     if not allowed:
         raise HTTPException(
             status_code=429,
@@ -251,5 +340,20 @@ if __name__ == "__main__":
     dc = DailyCounter(cap=2)
     print("Daily cap=2 over 3 calls (expect True, True, False):",
           [dc.allow() for _ in range(3)])
+
+    if shared_state.USE_REDIS:
+        r = shared_state.redis_client()
+        for k in r.scan_iter(match=shared_state.key("ratelimit", "selftest*")):
+            r.delete(k)
+        # Two "replicas" = two limiter objects sharing one Redis bucket.
+        a = RedisRateLimiter(r, rate_per_min=60, burst=5)
+        b = RedisRateLimiter(r, rate_per_min=60, burst=5)
+        got = [(a if i % 2 else b).check("selftest-ip")[0] for i in range(6)]
+        print("Redis, 6 calls split across 2 replicas "
+              "(expect 5x True, then False):", got)
+        assert got == [True] * 5 + [False], got
+        time.sleep(1.1)
+        assert a.check("selftest-ip")[0], "no refill after 1.1s"
+        print("Redis bucket shared across replicas: OK")
 
     print("security.py self-test passed.")

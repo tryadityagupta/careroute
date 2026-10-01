@@ -1,0 +1,91 @@
+# Run CareRoute as N stateless replicas on your laptop, behind a load balancer.
+#
+#   docker compose up --build --scale app=3
+#   open http://localhost:8000
+#
+# nginx round-robins every request across the replicas, so consecutive turns of
+# one conversation usually land on DIFFERENT replicas — the exact situation
+# that broke the in-memory design. Try `docker compose kill app` on one
+# replica mid-conversation: the chat carries on.
+#
+# Needs OPENAI_API_KEY in .env. To run without spending tokens, add these two
+# lines to .env and start with the mock profile:
+#   OPENAI_API_KEY=mock
+#   OPENAI_BASE_URL=http://mock-llm:9100/v1
+#   docker compose --profile mock up --build --scale app=3
+
+services:
+  redis:
+    image: redis:7-alpine
+    # Sessions/rate limits are disposable by design (TTLs), so no persistence;
+    # evict least-recently-used keys rather than erroring if memory fills.
+    command: ["redis-server", "--save", "", "--maxmemory", "256mb",
+              "--maxmemory-policy", "volatile-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 30
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: careroute
+      POSTGRES_PASSWORD: careroute
+      POSTGRES_DB: careroute
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "careroute"]
+      interval: 2s
+      retries: 30
+
+  # Runs ONCE before the replicas start — the same pattern as production,
+  # where N replicas booting together must not all race to migrate.
+  migrate:
+    build: .
+    command: ["python", "checkpoints.py", "migrate"]
+    env_file: .env
+    environment: &shared_env
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://careroute:careroute@postgres:5432/careroute
+      CAREROUTE_REQUIRE_SHARED_STATE: "1"
+      CAREROUTE_PG_AUTO_MIGRATE: "0"
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  app:
+    build: .
+    env_file: .env
+    environment: *shared_env
+    depends_on:
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      retries: 10
+
+  lb:
+    image: nginx:1.27-alpine
+    ports: ["8000:80"]
+    volumes: ["./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro"]
+    depends_on:
+      app: {condition: service_healthy}
+
+  mock-llm:
+    profiles: ["mock"]
+    build: .
+    command: ["uvicorn", "mock_llm:app", "--host", "0.0.0.0", "--port", "9100"]
+
+  # Prune idle conversations every 15 min (in Azure: a Container Apps Job).
+  pruner:
+    build: .
+    env_file: .env
+    environment: *shared_env
+    entrypoint: ["sh", "-c",
+                 "while true; do python checkpoints.py prune --idle-hours 2; sleep 900; done"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+volumes:
+  pgdata:
