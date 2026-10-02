@@ -224,6 +224,29 @@ def test_emergency_list_skips_single_doctor_and_narrow_hospitals():
     assert names == ["Maya Hospital", "Sakra World Hospital"]
 
 
+def test_pharmacy_list_is_not_withheld():
+    """find_pharmacies returns its names under 'pharmacies', which the guard
+    never harvested — so a numbered pharmacy list (what the prompt asks for)
+    had no confirmed names and was replaced by "that response was withheld".
+    Found by running the agent-mode mock LLM end to end."""
+    real = m.careroute_tools.find_pharmacies
+    m.careroute_tools.find_pharmacies = lambda **kw: {
+        "disclaimer": "Nearby pharmacies/chemists for obtaining medicines.",
+        "pharmacies": [{"name": "Apollo Pharmacy", "distance_km": 0.1},
+                       {"name": "MedPlus", "distance_km": 0.6}]}
+    good = "Nearest pharmacies:\n1. Apollo Pharmacy - 0.1 km\n2. MedPlus - 0.6 km"
+    try:
+        state, _ = run([
+            AIMessage(content="", id="p1",
+                      tool_calls=[call("find_pharmacies", LOC, 1)]),
+            AIMessage(content=good, id="p2"),
+        ])
+    finally:
+        m.careroute_tools.find_pharmacies = real
+    assert state["messages"][-1].content == good
+    assert {"Apollo Pharmacy", "MedPlus"} <= state["confirmed_providers"]
+
+
 def _fake_nominatim(known):
     """known: {query: (lat, lng, place_rank)} — anything else is not found."""
     def fake(query):
