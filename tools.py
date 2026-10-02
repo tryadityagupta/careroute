@@ -84,9 +84,17 @@ def get_patient_record(patient_id: str) -> dict:
 # A named place resolves to the same point every time, and Nominatim's usage
 # policy asks callers to be gentle — so cache and never look one up twice.
 _GEOCODE_CACHE: dict = {}
-_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-# Nominatim's policy: at most 1 request per second. The fallback below can make
-# several requests for one place, so space them out.
+# NOMINATIM_URL points at a self-hosted Nominatim (docker compose service
+# "nominatim", built from the same Karnataka extract) for load tests and
+# production. Unset, it falls back to the public server for quick local runs.
+_PUBLIC_NOMINATIM = "https://nominatim.openstreetmap.org"
+NOMINATIM_BASE = os.getenv("NOMINATIM_URL", _PUBLIC_NOMINATIM).rstrip("/")
+_NOMINATIM_URL = f"{NOMINATIM_BASE}/search"
+# The public server's policy: at most 1 request per second. The fallback below
+# can make several requests for one place, so space them out. That limit is the
+# public server's usage policy, not a property of Nominatim, so a self-hosted
+# instance is not throttled (it would serialise every replica's geocodes).
+_NOMINATIM_THROTTLE = NOMINATIM_BASE == _PUBLIC_NOMINATIM
 _NOMINATIM_LOCK = threading.Lock()
 _NOMINATIM_LAST = [0.0]
 # Restrict matches to these countries (comma-separated ISO codes). "in" keeps
@@ -96,17 +104,19 @@ _GEOCODE_COUNTRIES = os.getenv("CAREROUTE_GEOCODE_COUNTRIES", "in").strip()
 
 
 def _nominatim(query: str):
-    with _NOMINATIM_LOCK:
-        wait = 1.0 - (time.time() - _NOMINATIM_LAST[0])
-        if wait > 0:
-            time.sleep(wait)
-        _NOMINATIM_LAST[0] = time.time()
+    if _NOMINATIM_THROTTLE:
+        with _NOMINATIM_LOCK:
+            wait = 1.0 - (time.time() - _NOMINATIM_LAST[0])
+            if wait > 0:
+                time.sleep(wait)
+            _NOMINATIM_LAST[0] = time.time()
     params = {"q": query, "format": "jsonv2", "limit": 1}
     if _GEOCODE_COUNTRIES:
         params["countrycodes"] = _GEOCODE_COUNTRIES
     resp = requests.get(
         _NOMINATIM_URL, params=params,
-        headers={"User-Agent": "CareRoute/1.0 (care-routing demo)"}, timeout=10,
+        headers={"User-Agent": "CareRoute/1.0 (care-routing demo)"},
+        timeout=10 if _NOMINATIM_THROTTLE else 3,
     )
     resp.raise_for_status()
     return resp.json()

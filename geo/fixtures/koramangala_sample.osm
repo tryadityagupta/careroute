@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-made fixture for test_geo.py. Around patient P001 (12.9352, 77.6245).
+     Covers every shape geo/healthcare.lua must handle: plain nodes, a closed
+     way (centroid), a multipolygon relation (centroid), plus objects that must
+     be EXCLUDED (unnamed clinic, a cafe) and one far outside any radius.
+     OSM files must list all nodes, then ways, then relations (osm2pgsql
+     rejects anything else), so the geometry-only nodes are up here too. -->
+<osm version="0.6" generator="hand">
+  <!-- included: hospital node with ER -->
+  <node id="1" version="1" lat="12.9340" lon="77.6280">
+    <tag k="amenity" v="hospital"/><tag k="name" v="Sakra World Hospital"/><tag k="emergency" v="yes"/>
+  </node>
+  <!-- included: speciality tag only (British spelling) -->
+  <node id="2" version="1" lat="12.9400" lon="77.6200">
+    <tag k="amenity" v="clinic"/><tag k="name" v="Sparsh Care"/><tag k="healthcare:speciality" v="orthopaedics"/>
+  </node>
+  <!-- included: shop=chemist (no amenity) -->
+  <node id="3" version="1" lat="12.9360" lon="77.6250">
+    <tag k="shop" v="chemist"/><tag k="name" v="Apollo Pharmacy"/>
+  </node>
+  <!-- EXCLUDED: unnamed -->
+  <node id="4" version="1" lat="12.9353" lon="77.6246">
+    <tag k="healthcare" v="clinic"/>
+  </node>
+  <!-- EXCLUDED: not healthcare -->
+  <node id="5" version="1" lat="12.9351" lon="77.6244">
+    <tag k="amenity" v="cafe"/><tag k="name" v="Cafe Coffee Day"/>
+  </node>
+  <!-- included: healthcare=* scheme only -->
+  <node id="6" version="1" lat="12.9330" lon="77.6230">
+    <tag k="healthcare" v="dentist"/><tag k="name" v="Smile Dental"/>
+  </node>
+  <!-- included, but ~130 km away (Mysuru) -->
+  <node id="7" version="1" lat="12.3000" lon="76.6500">
+    <tag k="amenity" v="hospital"/><tag k="name" v="Mysuru City Hospital"/>
+  </node>
+  <!-- corners of way 100 (Heart Care Clinic), centroid ~ (12.9450, 77.6300) -->
+  <node id="10" version="1" lat="12.9445" lon="77.6295"/>
+  <node id="11" version="1" lat="12.9445" lon="77.6305"/>
+  <node id="12" version="1" lat="12.9455" lon="77.6305"/>
+  <node id="13" version="1" lat="12.9455" lon="77.6295"/>
+  <!-- corners of way 101 (outer ring of relation 200), centroid ~ (12.9300, 77.6190) -->
+  <node id="20" version="1" lat="12.9290" lon="77.6180"/>
+  <node id="21" version="1" lat="12.9290" lon="77.6200"/>
+  <node id="22" version="1" lat="12.9310" lon="77.6200"/>
+  <node id="23" version="1" lat="12.9310" lon="77.6180"/>
+
+  <way id="100" version="1">
+    <nd ref="10"/><nd ref="11"/><nd ref="12"/><nd ref="13"/><nd ref="10"/>
+    <tag k="amenity" v="clinic"/><tag k="name" v="Heart Care Clinic"/>
+  </way>
+  <way id="101" version="1">
+    <nd ref="20"/><nd ref="21"/><nd ref="22"/><nd ref="23"/><nd ref="20"/>
+  </way>
+
+  <relation id="200" version="1">
+    <member type="way" ref="101" role="outer"/>
+    <tag k="type" v="multipolygon"/><tag k="amenity" v="hospital"/>
+    <tag k="name" v="St. John's Medical College Hospital"/>
+  </relation>
+</osm>

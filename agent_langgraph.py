@@ -379,7 +379,8 @@ def _names_in(result) -> set:
         # 'facilities' (find_general_facilities) and 'general_alternatives' (a
         # find_providers miss) both hold unverified names the answer may
         # mention — harvest both so the guard counts them as 'offered'.
-        for _key in ("facilities", "general_alternatives", "nearest_hospitals"):
+        for _key in ("facilities", "general_alternatives", "nearest_hospitals",
+                     "pharmacies"):
             if isinstance(result.get(_key), list):
                 items += result[_key]
     return {i["name"] for i in items if isinstance(i, dict) and i.get("name")}
@@ -533,6 +534,13 @@ def tools(state: CareRouteState):
             errors.append(f"{msg.name}: {payload['error']}")
         elif msg.name == "find_providers" and isinstance(payload, list):
             confirmed |= _names_in(payload)   # tool-confirmed specialists
+        elif msg.name == "find_pharmacies" and isinstance(payload, dict) \
+                and payload.get("pharmacies"):
+            # A pharmacy the tool returned IS the confirmed answer to "where
+            # do I buy this". Without this, a numbered pharmacy list had no
+            # confirmed names and the guard withheld it. Sets reset per turn,
+            # so this cannot vouch for names in a later specialist answer.
+            confirmed |= _names_in(payload)
         else:
             offered |= _names_in(payload)     # everything else is unverified
 
