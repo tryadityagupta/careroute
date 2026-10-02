@@ -36,8 +36,11 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
+from dotenv import load_dotenv
 
 from routing import annotate_road_distance
+
+load_dotenv()  # self-sufficient: OSM_SOURCE is read at import time
 
 # Free public instances with GLOBAL coverage, from the OSM wiki's instance
 # table. NOTE: overpass.kumi.systems is just the OLD NAME of the
@@ -250,12 +253,44 @@ def _specialty_matcher(specialty: str):
     return lambda text: stem in text.lower()
 
 
-def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
-    """Shared Overpass fetch. Returns (facilities, error_or_None).
+def _unreachable(last_error):
+    """Payload for 'the directory could not be queried'.
 
-    Both find_providers and find_general_facilities use this, so the query,
-    the cache, and the distance math live in exactly one place.
+    This is a TRANSPORT failure, and it is not the same fact as "no
+    specialists nearby" — the model conflated the two and told a cardiac
+    patient no cardiologist was found while one sat 3.3 km away. The payload
+    says so in the data, because a prompt instruction is advisory and a data
+    structure is enforced. Same shape for both sources (Overpass, PostGIS).
     """
+    return {
+        "error": f"Provider directory unreachable: {last_error}",
+        "error_type": "upstream_unavailable",
+        "hint": ("The directory could not be reached, so nothing is known "
+                 "about which providers exist. Do NOT change radius_m — the "
+                 "radius is not the problem. You may retry the SAME call "
+                 "once. Do NOT say that no specialists were found. Tell the "
+                 "user the provider directory is temporarily unreachable and "
+                 "to try again shortly; for urgent symptoms, direct them to "
+                 "emergency care."),
+    }
+
+
+def _elements_from_postgis(patient_lat, patient_lng, radius_m):
+    """Self-hosted source: one indexed spatial query, no cache needed."""
+    import geo_db
+    t0 = time.perf_counter()
+    try:
+        elements = geo_db.nearby_elements(patient_lat, patient_lng, radius_m)
+    except geo_db.GeoUnavailable as e:
+        print(f"[osm] postgis lookup failed: {e}")
+        return None, _unreachable(e)
+    print(f"[osm] postgis r={radius_m} rows={len(elements)} "
+          f"took {(time.perf_counter() - t0) * 1000:.0f}ms")
+    return elements, None
+
+
+def _elements_from_overpass(patient_lat, patient_lng, radius_m):
+    """Public Overpass mirrors, with the on-disk cache and stale-if-error."""
     # Two tagging schemes, because OSM uses both and small Indian clinics and
     # chemists are split across them:
     #   * amenity=hospital|clinic|doctors|pharmacy — the classic scheme.
@@ -264,7 +299,7 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
     #     to an amenity-only query even though it sits in OSM.
     # pharmacy is included so "I need medicines now" can surface a chemist.
     # Overpass dedupes the union by element id, so a POI carrying both keys is
-    # returned once.
+    # returned once. geo/healthcare.lua mirrors this filter for PostGIS.
     query = f"""
     [out:json][timeout:25];
     (
@@ -280,55 +315,58 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
     key = _cache_key(patient_lat, patient_lng, radius_m)
     now = time.time()
     hit = _find_cached(patient_lat, patient_lng, radius_m, now)
-    elements = None
-
     if hit:
-        elements = hit["elements"]                 # fresh cache: zero network
-    else:
-        headers = {"User-Agent": "CareRoute-demo/1.0 (learning project)"}
-        t0 = time.perf_counter()
+        return hit["elements"], None               # fresh cache: zero network
+
+    headers = {"User-Agent": "CareRoute-demo/1.0 (learning project)"}
+    t0 = time.perf_counter()
+    elements, last_error = _race_mirrors(query, headers)
+    if elements is None and time.perf_counter() - t0 < _RETRY_IF_FAILED_WITHIN_S:
+        print("[osm] all mirrors failed fast — one more race")
+        time.sleep(_RETRY_BACKOFF_S)
         elements, last_error = _race_mirrors(query, headers)
-        if elements is None and time.perf_counter() - t0 < _RETRY_IF_FAILED_WITHIN_S:
-            print("[osm] all mirrors failed fast — one more race")
-            time.sleep(_RETRY_BACKOFF_S)
-            elements, last_error = _race_mirrors(query, headers)
-        print(f"[osm] overpass fetch r={radius_m} took "
-              f"{time.perf_counter() - t0:.1f}s ok={elements is not None}")
-        if elements is not None:
-            with _CACHE_LOCK:
-                _CACHE[key] = {"fetched_at": now, "elements": elements}
-            _cache_save()
-        else:
-            hit = _find_cached(patient_lat, patient_lng,
-                               radius_m, now, fresh=False)
+    print(f"[osm] overpass fetch r={radius_m} took "
+          f"{time.perf_counter() - t0:.1f}s ok={elements is not None}")
+    if elements is not None:
+        with _CACHE_LOCK:
+            _CACHE[key] = {"fetched_at": now, "elements": elements}
+        _cache_save()
+        return elements, None
 
-        if elements is None and hit:
-            # stale-if-error: every mirror is down, but we have seen this
-            # area before. Serve the expired data and say so.
-            age_h = (now - hit["fetched_at"]) / 3600
-            print(
-                f"[osm] all mirrors down — serving cached data ({age_h:.0f} h old)")
-            elements = hit["elements"]
+    hit = _find_cached(patient_lat, patient_lng, radius_m, now, fresh=False)
+    if hit:
+        # stale-if-error: every mirror is down, but we have seen this
+        # area before. Serve the expired data and say so.
+        age_h = (now - hit["fetched_at"]) / 3600
+        print(
+            f"[osm] all mirrors down — serving cached data ({age_h:.0f} h old)")
+        return hit["elements"], None
+    # Every mirror is down AND this area was never fetched before.
+    return None, _unreachable(last_error)
 
-        if elements is None:
-            # Every mirror is down AND this area was never fetched before.
-            # This is a TRANSPORT failure, and it is not the same fact as "no
-            # specialists nearby" — the model conflated the two and told a
-            # cardiac patient no cardiologist was found while one sat 3.3 km
-            # away. The payload says so in the data, because a prompt
-            # instruction is advisory and a data structure is enforced.
-            return None, {
-                "error": f"Provider directory unreachable: {last_error}",
-                "error_type": "upstream_unavailable",
-                "hint": ("The directory could not be reached, so nothing is known "
-                         "about which providers exist. Do NOT change radius_m — the "
-                         "radius is not the problem. You may retry the SAME call "
-                         "once. Do NOT say that no specialists were found. Tell the "
-                         "user the provider directory is temporarily unreachable and "
-                         "to try again shortly; for urgent symptoms, direct them to "
-                         "emergency care."),
-            }
 
+# Where raw OSM elements come from. Both return the same element shape, so
+# everything below _fetch_nearby is source-agnostic.
+#   overpass (default) — public mirrors; fine for a demo, NOT for load tests.
+#   postgis            — self-hosted import (geo/import.sh); the scaled design.
+OSM_SOURCE = os.getenv("OSM_SOURCE", "overpass").strip().lower()
+_SOURCES = {"overpass": _elements_from_overpass,
+            "postgis": _elements_from_postgis}
+if OSM_SOURCE not in _SOURCES:
+    raise ValueError(f"OSM_SOURCE must be one of {sorted(_SOURCES)}, "
+                     f"got {OSM_SOURCE!r}")
+
+
+def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
+    """Shared facility fetch. Returns (facilities, error_or_None).
+
+    find_providers, find_general_facilities, find_pharmacies and the emergency
+    path all use this, so the source, the distance math and the specialty
+    matching live in exactly one place.
+    """
+    elements, err = _SOURCES[OSM_SOURCE](patient_lat, patient_lng, radius_m)
+    if err:
+        return None, err
     matches_specialty = _specialty_matcher(specialty) if specialty else None
     out = []
     for el in elements:

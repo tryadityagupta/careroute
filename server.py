@@ -30,6 +30,8 @@ from security import require_api_key, rate_limit
 import sessions
 import patient_store
 import shared_state
+import osm
+import geo_db
 from dotenv import load_dotenv
 load_dotenv()  # belt-and-braces; tools.py also loads .env before reading flags
 
@@ -439,9 +441,19 @@ def healthz():
             checks["postgres"] = "ok"
         except Exception as e:
             checks["postgres"], ok = f"error: {type(e).__name__}", False
+    # The provider directory is reported but does NOT fail readiness. Every
+    # replica shares it, so failing readiness on it would pull ALL replicas out
+    # of rotation at once — including the emergency path, which still returns
+    # the local number without it. A missing directory is degraded, not down.
+    info = {}
+    if osm.OSM_SOURCE == "postgis":
+        try:
+            info["provider_directory"] = geo_db.dataset_info()
+        except geo_db.GeoUnavailable as e:
+            info["provider_directory"] = f"unavailable: {e}"
     body = {"status": "ok" if ok else "degraded",
             "mode": "shared" if shared_state.USE_REDIS else "memory",
-            "checks": checks}
+            "checks": checks, "info": info}
     return JSONResponse(status_code=200 if ok else 503, content=body)
 
 
