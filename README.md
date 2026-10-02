@@ -339,6 +339,41 @@ instances (FOSSGIS, VK Maps, Private.coffee) and caches every successful fetch t
 up pre-warms the cache for the demo area, which makes the web demo outage-proof for
 that area for a week.
 
+### 2b) Self-hosted map data (what Docker Compose runs, and what load tests need)
+
+The public Overpass, OSRM and Nominatim servers are shared, best-effort
+services; load-testing against them breaks their usage policies. So the
+Compose stack hosts all three itself, from one Karnataka OpenStreetMap extract:
+
+| Need | Public service (demo) | Self-hosted (Compose) |
+|---|---|---|
+| Find providers | Overpass mirrors, 2–25 s | PostGIS spatial query, ~50 ms at 8 km |
+| Road distance / ETA | router.project-osrm.org | `osrm` container (MLD, car profile) |
+| Place name → lat/lng, country | nominatim.openstreetmap.org (1 req/s) | `nominatim` container, unthrottled |
+
+Same OSM data, same code path: `geo/healthcare.lua` imports exactly the tags
+the Overpass query asked for, and PostGIS rows come back in Overpass's element
+shape, so every filter in `osm.py` runs unchanged. `OSM_SOURCE` picks the
+source (`overpass` default, `postgis` in Compose).
+
+One-time setup (Docker should have about 8 GB of RAM available):
+
+```bash
+docker compose --profile geo-setup run --rm geo-fetch    # ~550 MB download, clip to Karnataka
+docker compose --profile geo-setup run --rm geo-import   # healthcare POIs -> PostGIS
+docker compose --profile geo-setup run --rm osrm-prep    # build the routing graph
+docker compose up --build --scale app=3                  # nominatim imports on first start
+```
+
+Nominatim's first start imports the extract into its own database, which takes
+a while; it is persisted in the `nominatim-data` volume. Until it is ready,
+geocoding by place name fails, and everything else works. `/healthz` reports
+the directory's row count and data date under `info.provider_directory`.
+
+Refreshing the data: re-run `geo-fetch` with `FORCE=1`, then `geo-import`.
+The import builds schema `geo_import` and swaps it in for `geo` in one
+transaction, so running replicas never see a half-built table.
+
 ### 3) Google Places backend (real providers, key + billing required)
 
 Add to `.env`:
@@ -387,6 +422,39 @@ usage, coarsens coordinates to ~1.1 km (2 dp), and **omits direct identifiers**
 coordinates — and then treat the log store as sensitive.
 
 ## Tests (no LLM key needed except where noted)
+
+### Mock LLM (load tests without an OpenAI bill)
+
+`mock_llm.py` serves `/v1/chat/completions`. Point `OPENAI_BASE_URL` at it and
+the whole stack runs for real with only the model faked. In its default
+`agent` mode it behaves like a careful tool-calling model: it reads the
+transcript, calls `get_emergency_help` / `find_pharmacies` / `geocode_place` /
+`find_providers` as the prompt asks, widens the radius on a miss (8 → 16 →
+30 km), retries once on a directory error, and writes the final answer only
+from tool results. A turn costs 2–4 model calls, like the real model. It keeps
+no state, so any number of mock replicas answer identically.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /admin/fault` | `{"mode": "down"\|"ratelimit"\|"slow"\|"flaky"\|"ok"}`, switched mid-run |
+| `GET /admin/stats` | model calls, tool calls by name, prompt/completion tokens |
+| `POST /admin/reset` | zero the counters, clear faults |
+
+Latency is uniform between `MOCK_LLM_LATENCY_MIN_S` and `MOCK_LLM_LATENCY_MAX_S`
+(default 0.8–2.0 s). `MOCK_LLM_MODE=echo` keeps the original
+`turns_seen=N | meds=...` probe that `test_stateless.py` relies on. Token counts
+are estimates (about 4 characters per token), good enough for a cost model, not
+for billing.
+
+`test_geo.py` runs the real `geo/import.sh` against PostGIS on a hand-made
+fixture and checks provider, pharmacy and emergency lookups through it,
+including a directory outage (needs `osm2pgsql`, `psql`, and
+`GEO_TEST_DATABASE_URL`; skips otherwise):
+
+```bash
+GEO_TEST_DATABASE_URL=postgresql://careroute:careroute@localhost:5432/careroute \
+    python -m pytest -q test_geo.py
+```
 
 Run these with `USE_REAL_PROVIDERS` unset unless noted:
 
