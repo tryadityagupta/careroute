@@ -28,6 +28,9 @@ import time
 from math import radians, sin, cos, sqrt, atan2
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()  # self-sufficient: OSRM_BASE_URL is read at import time
 
 _OSRM_BASE = os.getenv("OSRM_BASE_URL", "https://router.project-osrm.org")
 # SPEED FIX: was 8 s. OSRM is a nice-to-have (we fall back to straight-line

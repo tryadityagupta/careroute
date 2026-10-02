@@ -44,7 +44,10 @@ _NUMBERS = {
 }
 _DEFAULT_NUMBER = "112"
 
-_NOMINATIM = "https://nominatim.openstreetmap.org/reverse"
+# Same base URL as forward geocoding (tools.py): self-hosted when NOMINATIM_URL
+# is set. The number never depends on this call; see the fallbacks below.
+_NOMINATIM = os.getenv("NOMINATIM_URL",
+                       "https://nominatim.openstreetmap.org").rstrip("/") + "/reverse"
 _GEO_CACHE_PATH = os.path.join(
     os.path.dirname(__file__), "data", "geo_cache.json")
 _GEO_TTL_S = 30 * 24 * 3600
@@ -83,7 +86,7 @@ def _country_code(lat, lng):
             _NOMINATIM,
             params={"lat": lat, "lon": lng, "format": "json", "zoom": 3},
             headers={"User-Agent": "CareRoute-demo/1.0 (learning project)"},
-            timeout=6,
+            timeout=3 if os.getenv("NOMINATIM_URL") else 6,
         )
         resp.raise_for_status()
         cc = (resp.json().get("address", {}).get(
