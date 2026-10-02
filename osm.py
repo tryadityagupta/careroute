@@ -112,7 +112,7 @@ def _cache_save() -> None:
 # Bump this whenever the Overpass QUERY below changes shape. It is part of the
 # cache key, so a query change auto-invalidates every stale entry (fetched with
 # the old, narrower query) instead of serving week-old results.
-_QUERY_VERSION = 3
+_QUERY_VERSION = 4
 
 
 def _cache_key(lat: float, lng: float, radius_m: int) -> str:
@@ -307,8 +307,12 @@ def _elements_from_overpass(patient_lat, patient_lng, radius_m):
       way["amenity"~"hospital|clinic|doctors|pharmacy"](around:{radius_m},{patient_lat},{patient_lng});
       node["healthcare"](around:{radius_m},{patient_lat},{patient_lng});
       way["healthcare"](around:{radius_m},{patient_lat},{patient_lng});
-      node["shop"~"chemist|pharmacy"](around:{radius_m},{patient_lat},{patient_lng});
-      way["shop"~"chemist|pharmacy"](around:{radius_m},{patient_lat},{patient_lng});
+      node["shop"~"chemist|pharmacy|medical_supply|medical"](around:{radius_m},{patient_lat},{patient_lng});
+      way["shop"~"chemist|pharmacy|medical_supply|medical"](around:{radius_m},{patient_lat},{patient_lng});
+      // Indian chemists are often mapped as a generic shop ("Sri Sai Medicals",
+      // shop=yes/convenience). Catch them by name.
+      node["shop"]["name"~"{_PHARMACY_NAME_RE}",i](around:{radius_m},{patient_lat},{patient_lng});
+      way["shop"]["name"~"{_PHARMACY_NAME_RE}",i](around:{radius_m},{patient_lat},{patient_lng});
     );
     out center tags;
     """
@@ -343,6 +347,28 @@ def _elements_from_overpass(patient_lat, patient_lng, radius_m):
         return hit["elements"], None
     # Every mirror is down AND this area was never fetched before.
     return None, _unreachable(last_error)
+
+
+# ---------------------------------------------------------------------------
+# PHARMACY DETECTION — why the chemist down the road never showed up.
+# In India a chemist is a "Medicals" / "Medical Store" / "Pharma" shop, and
+# mappers tag it inconsistently: amenity=pharmacy, shop=chemist, but also
+# shop=medical_supply or just shop=yes with the name saying what it is.
+# Overpass regexes are POSIX ERE, so keep this pattern simple.
+# ---------------------------------------------------------------------------
+_PHARMACY_NAME_RE = "medical|pharma|chemist|drug ?store|aushadh"
+_PHARMACY_NAME = re.compile(_PHARMACY_NAME_RE, re.I)
+_PHARMACY_SHOPS = ("chemist", "pharmacy", "medical_supply", "medical")
+
+
+def _looks_like_pharmacy(name, amenity, healthcare, shop) -> bool:
+    if "pharmacy" in amenity or "pharmacy" in healthcare:
+        return True
+    if shop in _PHARMACY_SHOPS:
+        return True
+    # Name-based only for SHOPS: "Manipal Medical Centre" is a hospital
+    # (amenity=hospital), not a chemist, and must not be relabelled.
+    return bool(shop) and not amenity and bool(_PHARMACY_NAME.search(name))
 
 
 # Where raw OSM elements come from. Both return the same element shape, so
@@ -396,8 +422,7 @@ def _fetch_nearby(patient_lat, patient_lng, radius_m, specialty=None):
         # payload reaches the model.
         signal = " ".join((name.lower(), amenity, healthcare, shop,
                            tags.get("healthcare:speciality", "").lower()))
-        is_pharmacy = ("pharmacy" in amenity or "pharmacy" in healthcare
-                       or shop in ("chemist", "pharmacy"))
+        is_pharmacy = _looks_like_pharmacy(name, amenity, healthcare, shop)
         item = {
             "name": name,
             # Prefer amenity, then healthcare, then shop, so a place tagged only
@@ -623,6 +648,13 @@ def find_pharmacies(patient_lat: float, patient_lng: float,
     return {
         "disclaimer": "Nearby pharmacies/chemists for obtaining medicines.",
         "pharmacies": top,
+        "coverage_note": (
+            "Source is OpenStreetMap, which is community-mapped and misses "
+            "many small neighbourhood chemists. These are the nearest MAPPED "
+            "pharmacies, not necessarily the nearest that exist. If the user "
+            "says there is a closer one, believe them: say it is likely not "
+            "in the map data yet — do not repeat the same list as if it "
+            "were complete."),
     }
 
 
