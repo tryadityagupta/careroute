@@ -41,6 +41,9 @@ ENV = {
     "CAREROUTE_RATE_PER_MIN": "1",
     "CAREROUTE_BURST": "5",
     "MOCK_LLM_LATENCY_S": "1.0",
+    # Echo mode: replies "turns_seen=N | meds=..." so we can see whether
+    # conversation history survived a replica hop.
+    "MOCK_LLM_MODE": "echo",
 }
 
 
