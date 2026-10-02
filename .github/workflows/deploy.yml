@@ -26,7 +26,7 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping" --health-interval 2s --health-retries 30
       postgres:
-        image: postgres:16-alpine
+        image: postgis/postgis:16-3.4-alpine   # PostGIS for the provider directory
         env:
           POSTGRES_USER: careroute
           POSTGRES_PASSWORD: careroute
@@ -58,6 +58,15 @@ jobs:
           python patient_store.py
           python security.py
           python test_agent_langgraph.py
+
+      - name: Provider directory + mock-LLM full-stack gate (PostGIS)
+        env:
+          GEO_TEST_DATABASE_URL: postgresql://careroute:careroute@localhost:5432/careroute
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq osm2pgsql postgresql-client
+          pip install pytest
+          python -m pytest -q test_geo.py test_mock_llm.py
 
       - name: Statelessness gate — 3 replicas, kill one mid-conversation
         env:
