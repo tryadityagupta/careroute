@@ -2,3 +2,7 @@
 *.py  text eol=lf
 *.html text eol=lf
 *.json text eol=lf
+*.sh  text eol=lf
+*.lua text eol=lf
+*.osm text eol=lf
+*.yml text eol=lf
