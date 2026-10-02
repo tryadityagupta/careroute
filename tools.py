@@ -130,15 +130,35 @@ def _fallback_queries(place: str) -> list[str]:
     layout or area after it usually is. So: try the whole thing, then drop the
     leading comma-separated part one at a time. Filler like "near" / "opposite"
     is removed first because it only confuses the geocoder.
+
+    Long Indian postal addresses ("Shop, building, 68/2, 1st cross, Main Rd,
+    Area, City, State PIN") used to fail outright: the old [:4] cap kept only
+    the four MOST specific suffixes, so the ones Nominatim can actually resolve
+    (the road, the area) were never tried. Now house numbers and PIN codes are
+    stripped, and the bounded list always keeps the broad tail.
     """
     cleaned = re.sub(r"\b(near|opp(osite)?|behind|next to|beside|in front of|"
                      r"close to|around)\b\.?", " ", place, flags=re.I)
+    # A 6-digit Indian PIN glued to the state ("Karnataka 560087") makes
+    # Nominatim's free-form parser miss; drop it.
+    cleaned = re.sub(r"\b\d{6}\b", " ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,")
     parts = [p.strip() for p in cleaned.split(",") if p.strip()]
-    queries = [", ".join(parts[i:]) for i in range(len(parts))] or [cleaned]
+    # "68/2", "#12", "No. 5" carry no meaning for an OSM geocoder.
+    parts = [p for p in parts
+             if not re.fullmatch(r"(#|no\.?\s*)?[\d/\-\s]+[a-z]?", p, flags=re.I)]
+    suffixes = [", ".join(parts[i:]) for i in range(len(parts))] or [cleaned]
+    # Bounded (public Nominatim = 1 req/s): the two most specific attempts
+    # plus the three broadest that are still finer than "city, state" (a
+    # city-only fallback is rejected by geocode_place anyway).
+    if len(suffixes) > 5:
+        tail = suffixes[:-2] if len(parts) > 3 else suffixes
+        suffixes = suffixes[:2] + \
+            [q for q in tail[-3:] if q not in suffixes[:2]]
+    queries = list(dict.fromkeys(suffixes))
     if place.strip() not in queries:
         queries.insert(0, place.strip())
-    return queries[:4]            # bounded: at most ~4 s of Nominatim calls
+    return queries[:6]
 
 
 def geocode_place(place: str) -> dict:

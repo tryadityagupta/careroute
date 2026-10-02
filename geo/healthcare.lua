@@ -6,7 +6,8 @@
 --
 --   amenity  in hospital|clinic|doctors|pharmacy
 --   healthcare = *            (the newer tagging scheme)
---   shop     in chemist|pharmacy
+--   shop     in chemist|pharmacy|medical_supply|medical
+--   shop=* whose name says chemist ("... Medicals", "... Pharma")
 --
 -- Two deliberate differences from the Overpass query:
 --   * Unnamed POIs are dropped at import. osm.py discarded them anyway ("a
@@ -39,10 +40,23 @@ local healthcare = osm2pgsql.define_table({
 })
 
 local AMENITY = { hospital = true, clinic = true, doctors = true, pharmacy = true }
-local SHOP = { chemist = true, pharmacy = true }
+local SHOP = { chemist = true, pharmacy = true, medical_supply = true, medical = true }
+
+-- Keep in sync with osm.py _PHARMACY_NAME_RE (Lua patterns, lowercased name).
+local PHARMACY_NAME = { "medical", "pharma", "chemist", "drug ?store", "aushadh" }
+
+local function pharmacy_by_name(tags)
+    if not tags.shop or not tags.name then return false end
+    local n = string.lower(tags.name)
+    for _, pat in ipairs(PHARMACY_NAME) do
+        if string.find(n, pat) then return true end
+    end
+    return false
+end
 
 local function is_healthcare(tags)
     return AMENITY[tags.amenity] or tags.healthcare ~= nil or SHOP[tags.shop]
+        or pharmacy_by_name(tags)
 end
 
 local function insert(object, geom)
