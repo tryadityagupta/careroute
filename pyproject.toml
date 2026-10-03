@@ -1,0 +1,10 @@
+[project]
+name = "careroute"
+version = "0.2.0"
+description = "Agentic provider-matching assistant"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"

@@ -44,35 +44,22 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt pytest
 
-      - name: Run tests (the gate) — memory mode
-        run: python test_agent_langgraph.py
-
-      - name: Run tests — shared mode (Redis + Postgres)
-        env:
-          REDIS_URL: redis://localhost:6379/14
-          DATABASE_URL: postgresql://careroute:careroute@localhost:5432/careroute
-        run: |
-          python sessions.py
-          python patient_store.py
-          python security.py
-          python test_agent_langgraph.py
-
-      - name: Provider directory + mock-LLM full-stack gate (PostGIS)
-        env:
-          GEO_TEST_DATABASE_URL: postgresql://careroute:careroute@localhost:5432/careroute
+      - name: Install map tooling for the PostGIS tests
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq osm2pgsql postgresql-client
-          pip install pytest
-          python -m pytest -q test_geo.py test_mock_llm.py test_pharmacy_coverage.py
 
-      - name: Statelessness gate — 3 replicas, kill one mid-conversation
+      - name: Tests (the gate) — memory mode
+        run: python -m pytest
+
+      - name: Tests — shared mode (Redis + Postgres + PostGIS, 3 real replicas)
         env:
-          REDIS_URL: redis://localhost:6379/13
+          REDIS_URL: redis://localhost:6379/14
           DATABASE_URL: postgresql://careroute:careroute@localhost:5432/careroute
-        run: python test_stateless.py
+          GEO_TEST_DATABASE_URL: postgresql://careroute:careroute@localhost:5432/careroute
+        run: python -m pytest -rs
 
       - name: Log in to Azure
         uses: azure/login@v2

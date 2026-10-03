@@ -4,4 +4,6 @@ __pycache__/
 .git/
 .env
 .pytest_cache/
-data/osm/
+data/osm/tests/
+infra/
+scripts/

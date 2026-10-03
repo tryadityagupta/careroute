@@ -10,3 +10,6 @@ data/geo_cache.json
 synthea_sample_data_csv_latest/
 logs/
 data/osm/
+
+agent.py
+mocktest.py
