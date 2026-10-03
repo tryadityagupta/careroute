@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# geo/import.sh — load healthcare POIs from the clipped extract into PostGIS.
+# infra/geo/import.sh — load healthcare POIs from the clipped extract into PostGIS.
 #
 #   docker compose --profile geo-setup run --rm geo-import
 #

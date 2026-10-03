@@ -42,6 +42,11 @@ services:
     # volume upgrades in place. One DB holds both the checkpointer and the
     # provider directory (schema geo); GEO_DATABASE_URL can split them later.
     image: postgis/postgis:16-3.4-alpine
+    # Each replica opens two pools (checkpoints + provider directory), up to
+    # CAREROUTE_PG_POOL_MAX + GEO_POOL_MAX = 20 connections. The default
+    # max_connections=100 runs out at ~5 replicas, so the 8-replica scale-out
+    # test would fail on connections, not on the app. (Production: PgBouncer.)
+    command: [ "postgres", "-c", "max_connections=300" ]
     environment:
       POSTGRES_USER: careroute
       POSTGRES_PASSWORD: careroute
@@ -56,7 +61,7 @@ services:
   # where N replicas booting together must not all race to migrate.
   migrate:
     build: .
-    command: [ "python", "checkpoints.py", "migrate" ]
+    command: [ "python", "-m", "careroute.storage.checkpoints", "migrate" ]
     env_file: .env
     environment: &shared_env
       REDIS_URL: redis://redis:6379/0
@@ -86,7 +91,7 @@ services:
   lb:
     image: nginx:1.27-alpine
     ports: [ "8000:80" ]
-    volumes: [ "./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro" ]
+    volumes: [ "./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro" ]
     depends_on:
       app: { condition: service_healthy }
 
@@ -123,13 +128,13 @@ services:
   # One-time setup jobs:  docker compose --profile geo-setup run --rm <job>
   geo-fetch:
     profiles: [ "geo-setup" ]
-    build: ./geo
+    build: ./infra/geo
     command: [ "/geo/fetch_extract.sh" ]
     volumes: [ "./data/osm:/data/osm" ]
 
   geo-import:
     profiles: [ "geo-setup" ]
-    build: ./geo
+    build: ./infra/geo
     command: [ "/geo/import.sh" ]
     environment:
       GEO_DATABASE_URL: postgresql://careroute:careroute@postgres:5432/careroute
@@ -141,14 +146,14 @@ services:
     profiles: [ "geo-setup" ]
     image: ghcr.io/project-osrm/osrm-backend:v26.5.0-amd64-debian
     entrypoint: [ "sh", "/geo/osrm_prep.sh" ]
-    volumes: [ "./data/osm:/data/osm", "./geo:/geo:ro" ]
+    volumes: [ "./data/osm:/data/osm", "./infra/geo:/geo:ro" ]
 
   # Fake OpenAI for load tests: scripted tool calls, 0.8-2 s latency, fault
   # switch at /admin/fault, call + token counts at /admin/stats.
   mock-llm:
     profiles: [ "mock" ]
     build: .
-    command: [ "uvicorn", "mock_llm:app", "--host", "0.0.0.0", "--port", "9100" ]
+    command: [ "uvicorn", "mock_llm.app:app", "--host", "0.0.0.0", "--port", "9100" ]
     environment:
       MOCK_LLM_MODE: agent
       MOCK_LLM_LATENCY_MIN_S: "0.8"
@@ -160,7 +165,7 @@ services:
     build: .
     env_file: .env
     environment: *shared_env
-    entrypoint: [ "sh", "-c", "while true; do python checkpoints.py prune --idle-hours 2; sleep 900; done" ]
+    entrypoint: [ "sh", "-c", "while true; do python -m careroute.storage.checkpoints prune --idle-hours 2; sleep 900; done" ]
     depends_on:
       migrate: { condition: service_completed_successfully }
 

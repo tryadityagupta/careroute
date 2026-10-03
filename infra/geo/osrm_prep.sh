@@ -1,12 +1,12 @@
 #!/bin/sh
-# geo/osrm_prep.sh — build the OSRM routing graph for the clipped extract.
+# infra/geo/osrm_prep.sh — build the OSRM routing graph for the clipped extract.
 #
 #   docker compose --profile geo-setup run --rm osrm-prep
 #
 # Uses the MLD pipeline (extract -> partition -> customize). CH would answer a
 # little faster, but MLD preprocesses faster, needs less RAM, and is what you'd
 # pick if you later wanted live traffic weights (re-run customize only).
-# The car profile matches what routing.py asks for (/table/v1/driving).
+# The car profile matches what careroute/maps/routing.py asks for (/table/v1/driving).
 set -eu
 
 PBF="${PBF:-/data/osm/karnataka.osm.pbf}"

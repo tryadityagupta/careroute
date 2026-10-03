@@ -15,8 +15,8 @@ proven by an offline test harness.
 
 ## What it demonstrates
 - **Agentic loop** (reason -> act -> observe -> repeat) — implemented twice:
-  raw OpenAI tool-calling (`agent.py`) and a LangGraph `StateGraph`
-  (`agent_langgraph.py`), same behaviour, one import swap apart
+  a LangGraph `StateGraph` (`careroute/agent/graph.py`), ported from an
+  earlier hand-rolled loop with behaviour parity pinned by golden-transcript tests
 - **Tool calling / function calling** — the LLM chooses tools; our code executes
   them. Five tools: patient-record retrieval, specialist search, general-facility
   fallback, pharmacy lookup, and emergency triage
@@ -52,17 +52,61 @@ proven by an offline test harness.
 - **Guardrails**: a max-steps cap, per-tool error handling, and tool-side clamping
   of model-supplied arguments (search radius)
 
+## Project layout — where to go to change what
+
+```
+careroute/                 the application (one Python package)
+  config.py                every setting / env var, read once into Settings
+  container.py             builds and wires every object (composition root)
+  __main__.py              CLI demo: python -m careroute "..."
+  api/                     HTTP layer
+    app.py                 create_app(): routes, CORS, /healthz, /version
+    schemas.py             request bodies (CareRequest, ChatRequest)
+    services.py            CareService, ChatService, TurnPromptBuilder
+    location.py            LocationResolver (typed place / GPS -> coordinates)
+    errors.py              store or LLM down -> 503 with the emergency number
+  agent/                   the LangGraph agent
+    graph.py               CareRouteAgent: nodes, routing, run_single / run_turn
+    prompts.py             system prompt + emergency context
+    state.py               CareRouteState and its per-turn resets
+    guard.py               AnswerGuard: the deterministic answer check
+    toolkit.py             LangChain tool adapters (schemas the model reads)
+    tracing.py, messages.py  per-turn trace for logs; message helpers
+    checkpointer.py        MemorySaver or Postgres checkpointer
+  domain/                  business logic behind the tools
+    tools.py               CareTools: the 7 tools the agent can call
+    patients.py            PatientRepository: demo records + live records
+    emergency.py           EmergencyService + EmergencyNumberResolver
+  providers/               provider directories (one interface, three backends)
+    base.py, dummy.py, google.py
+    osm/                   directory.py, sources.py (Overpass | PostGIS), matching.py
+  maps/                    distance, routing (OSRM), geocoding (Nominatim), postgis, cache
+  storage/                 Redis connection, sessions, patient store, seed data,
+                           checkpoints admin CLI (python -m careroute.storage.checkpoints)
+  security/                limits.py (token bucket, daily cap), gate.py (FastAPI deps)
+  observability/           interaction_log.py (privacy-conscious JSON lines)
+mock_llm/                  fake OpenAI server for load tests (app.py, policy.py)
+web/                       index.html (chat UI), log_viewer.html
+infra/                     nginx/ (load balancer), geo/ (OSM import, OSRM prep)
+scripts/                   one-off tools: synthea_to_patients.py, checktags.py
+tests/                     every test, pytest
+```
+
+Rule of thumb: a **behaviour** change lives in `domain/`, `providers/` or
+`agent/`; a **wiring** change (which implementation, which URL) lives in
+`config.py` + `container.py`; nothing else reads environment variables.
+
 ## Architecture
 
 ```mermaid
 flowchart TD
-    B["Browser — index.html"]
+    B["Browser — web/index.html"]
     B -->|"POST /chat (multi-turn) · POST /care (single-shot)"| S
 
-    subgraph FastAPI["FastAPI — server.py"]
+    subgraph FastAPI["FastAPI — careroute/api"]
         S["Request handler"]
-        SEC["security.py<br/>rate limit + optional API key"]
-        SESS["sessions.py<br/>sessions + patient records"]
+        SEC["security/<br/>rate limit + optional API key"]
+        SESS["storage/<br/>sessions + patient records"]
         S -.-> SEC
         S -.-> SESS
     end
@@ -70,9 +114,7 @@ flowchart TD
     S --> AG
 
     subgraph Engine["Agent engine"]
-        AG["agent_langgraph.py — StateGraph<br/>(server.py uses this)"]
-        REF["agent.py — raw loop (reference)"]
-        AG -.->|"behaviour parity, pinned by the test harness"| REF
+        AG["agent/graph.py — CareRouteAgent (StateGraph)"]
     end
 
     AG <-->|"tool descriptions · act (tool call) · observe (result)"| LLM["gpt-4o-mini"]
@@ -82,13 +124,13 @@ flowchart TD
     AG -->|no more tool calls| G["guard<br/>deterministic answer check"]
     G --> U["Answer to user"]
 
-    subgraph Tools["tools.py — one registry, five tools"]
+    subgraph Tools["domain/tools.py — CareTools"]
         T["get_patient_record · find_providers<br/>find_general_facilities · find_pharmacies<br/>get_emergency_help"]
     end
 
     T --> BK["Provider backend (swappable)<br/>dummy JSON · OSM (mirrors + cache) · Google Places"]
-    T --> RT["routing.py — OSRM road distance / ETA"]
-    T --> EM["emergency.py — local number + nearest ER"]
+    T --> RT["maps/routing.py — OSRM road distance / ETA"]
+    T --> EM["domain/emergency.py — local number + nearest ER"]
 ```
 
 On a specialty miss the OSM backend's `find_providers` returns
@@ -99,8 +141,8 @@ non-specialist alternatives, before answering.
 
 ## The agent engines
 
-`agent_langgraph.py` is a behaviour-parity port of the hand-rolled loop in
-`agent.py`. The loop was already a graph; LangGraph just makes the shape explicit:
+`careroute/agent/graph.py` is a behaviour-parity port of an earlier hand-rolled
+loop (kept in git history at tag `pre-oop`). The loop was already a graph; LangGraph just makes the shape explicit:
 
 ```mermaid
 flowchart LR
@@ -126,11 +168,10 @@ and an answer produced after a directory outage gets prefixed with an explicit
 "this is NOT a confirmed result" warning. Emergency answers are exempt — they are
 a call-for-help plus hospitals, not a specialist claim.
 
-Parity is pinned by `test_agent_langgraph.py`: a scripted stand-in model replays
+Parity is pinned by `tests/test_agent_graph.py`: a scripted stand-in model replays
 fixed tool-call sequences ("golden transcripts"), so the tests verify the graph's
 behaviour — tracking, guard, step cap, outage handling, tool schemas — with no API
-key and no network. `agent.py` is kept on purpose as the reference implementation:
-the pair plus the harness documents the migration rather than hiding it.
+key and no network.
 
 ## Multi-turn conversations
 
@@ -148,7 +189,7 @@ client sends back on every follow-up. Under the hood:
   `is_emergency` reset each turn (they describe *this* message); `confirmed_providers`
   and `offered_facilities` persist, so re-mentioning an earlier tool-confirmed
   provider is not treated as a hallucination by the guard.
-- `sessions.py` sweeps idle sessions (30-minute TTL, hard cap of 5000) and frees
+- `storage/sessions.py` sweeps idle sessions (30-minute TTL, hard cap of 5000) and frees
   their patient records.
 
 Sessions, patient records and checkpoints live in shared stores when
@@ -163,8 +204,8 @@ lives outside the process:
 | State | Single replica (no config) | Shared (`REDIS_URL` + `DATABASE_URL`) |
 |---|---|---|
 | Conversation transcript | LangGraph `MemorySaver` | Postgres checkpointer (`langgraph-checkpoint-postgres`) |
-| Sessions + turn counter | dict in `sessions.py` | Redis hash with native TTL |
-| Live patient records | dict | Redis JSON with native TTL (`patient_store.py`) |
+| Sessions + turn counter | `MemorySessionStore` | Redis hash with native TTL |
+| Live patient records | dict | Redis JSON with native TTL (`storage/patient_store.py`) |
 | Rate limit + daily cap | dict | Redis, atomic Lua token bucket on Redis's clock |
 
 Design points:
@@ -185,12 +226,12 @@ Design points:
 - **Fail fast on misconfiguration.** `CAREROUTE_REQUIRE_SHARED_STATE=1` makes a
   replica refuse to boot without Redis/Postgres, instead of silently running
   in memory mode and splitting conversations.
-- **Retention.** Redis forgets idle sessions by TTL; `python checkpoints.py
-  prune` deletes idle conversations from Postgres in batches (run it on a
+- **Retention.** Redis forgets idle sessions by TTL; `python -m
+  careroute.storage.checkpoints prune` deletes idle conversations from Postgres in batches (run it on a
   schedule), so symptom/medication history isn't kept longer than needed.
 
-**Proof:** `test_stateless.py` boots real replica *processes* against real
-Redis and Postgres with a mock LLM (`mock_llm.py`, no API key), and CI runs it
+**Proof:** `tests/test_stateless.py` boots real replica *processes* against real
+Redis and Postgres with a mock LLM (`mock_llm/`, no API key), and CI runs it
 before every deploy:
 
 ```
@@ -212,7 +253,7 @@ docker compose up --build --scale app=3     # http://localhost:8000
 
 ## Emergency triage
 
-`get_emergency_help` (in `emergency.py`) is called first when the complaint looks
+`get_emergency_help` (in `careroute/domain/emergency.py`) is called first when the complaint looks
 like an emergency — seizure, stroke signs, major trauma, heavy bleeding, chest pain
 with cardiac features, fainting, or trouble breathing. It returns:
 
@@ -229,7 +270,7 @@ specialist guard.
 ## Distance and ETA
 
 Ranking used to be straight-line (haversine) distance, which looked wrong next to
-Maps (a clinic 170 m away showed as 3.78 km). `routing.py` now upgrades results to
+Maps (a clinic 170 m away showed as 3.78 km). `careroute/maps/routing.py` now upgrades results to
 **real road distance and driving time via OSRM**:
 
 - Haversine stays upstream as a cheap, no-network pre-filter to shortlist the
@@ -253,7 +294,7 @@ current medications, and allergies.
 - `synthea_to_patients.py` is the converter (drops Synthea's non-clinical
   "conditions", keeps active meds, remaps Massachusetts coordinates to Bengaluru
   deterministically). Run it only to regenerate the data.
-- `data_source.py` follows the 12-factor idea: **local `./data/*.json` in dev,
+- `careroute/storage/seed_data.py` follows the 12-factor idea: **local `./data/*.json` in dev,
   Azure Blob in production**, chosen purely by env vars (`BLOB_ACCOUNT_URL`). The
   code never changes between laptop and prod; only configuration does. Nothing
   holds a password — Azure uses the Container App's managed identity, and locally
@@ -308,34 +349,31 @@ stand-in for tests and quick demos.
 ### 1) Dummy backend (default — works offline)
 
 ```bash
-# CLI demo (current engine)
-python agent_langgraph.py
-
-# CLI demo (reference implementation)
-python agent.py
+# CLI demo
+python -m careroute
 
 # Web demo -> open http://localhost:8000
-uvicorn server:app --reload
+uvicorn --factory careroute.api.app:create_app --reload
 ```
 
 ### 2) OpenStreetMap backend (real facilities, free, no key)
 
 PowerShell (Windows):
 ```powershell
-$env:USE_REAL_PROVIDERS="osm"; uvicorn server:app --reload
+$env:USE_REAL_PROVIDERS="osm"; uvicorn --factory careroute.api.app:create_app --reload
 ```
 
 bash / zsh (macOS, Linux):
 ```bash
-USE_REAL_PROVIDERS=osm uvicorn server:app --reload
+USE_REAL_PROVIDERS=osm uvicorn --factory careroute.api.app:create_app --reload
 ```
 
 Or simply add `USE_REAL_PROVIDERS=osm` to `.env` and run
-`uvicorn server:app --reload` — `tools.py` loads `.env` before reading the flag.
+`uvicorn --factory careroute.api.app:create_app --reload` — `careroute/config.py` reads `.env` once, at startup.
 
 The OSM backend rotates across three independently operated public Overpass
 instances (FOSSGIS, VK Maps, Private.coffee) and caches every successful fetch to
-`data/osm_cache.json` (gitignored). Running `python osm.py` once while a mirror is
+`data/osm_cache.json` (gitignored). Running a lookup once while a mirror is
 up pre-warms the cache for the demo area, which makes the web demo outage-proof for
 that area for a week.
 
@@ -351,9 +389,9 @@ Compose stack hosts all three itself, from one Karnataka OpenStreetMap extract:
 | Road distance / ETA | router.project-osrm.org | `osrm` container (MLD, car profile) |
 | Place name → lat/lng, country | nominatim.openstreetmap.org (1 req/s) | `nominatim` container, unthrottled |
 
-Same OSM data, same code path: `geo/healthcare.lua` imports exactly the tags
+Same OSM data, same code path: `infra/geo/healthcare.lua` imports exactly the tags
 the Overpass query asked for, and PostGIS rows come back in Overpass's element
-shape, so every filter in `osm.py` runs unchanged. `OSM_SOURCE` picks the
+shape, so every filter in `careroute/providers/osm/` runs unchanged. `OSM_SOURCE` picks the
 source (`overpass` default, `postgis` in Compose).
 
 One-time setup (Docker should have about 8 GB of RAM available):
@@ -383,20 +421,19 @@ GOOGLE_MAPS_API_KEY=AIza...
 ```
 then:
 ```bash
-uvicorn server:app --reload
+uvicorn --factory careroute.api.app:create_app --reload
 ```
 
 PowerShell one-liner without `.env`:
 ```powershell
-$env:USE_REAL_PROVIDERS="google"; $env:GOOGLE_MAPS_API_KEY="AIza..."; uvicorn server:app --reload
+$env:USE_REAL_PROVIDERS="google"; $env:GOOGLE_MAPS_API_KEY="AIza..."; uvicorn --factory careroute.api.app:create_app --reload
 ```
 
 ## Security and rate limiting
 
 `/care` and `/chat` run the agent (several LLM calls plus real map lookups), so the
-real exposure is **volume**. `security.py` puts three independent, env-toggled
-layers in front of them (all framework-agnostic and unit-testable — run
-`python security.py`):
+real exposure is **volume**. `careroute/security/` puts three independent, env-toggled
+layers in front of them (the limiter classes are framework-agnostic; see `tests/test_security.py`):
 
 | Layer | Env var | Default |
 |---|---|---|
@@ -411,7 +448,7 @@ still the monthly spend limit set in the OpenAI and Google Cloud billing console
 
 ## Logging and privacy
 
-`request_log.py` emits one JSON line per interaction to stdout (and, if
+`careroute/observability/interaction_log.py` emits one JSON line per interaction to stdout (and, if
 `CAREROUTE_LOG_FILE` is set, to a file too), so on Azure the platform ships it to
 Log Analytics with no extra infrastructure — query it with KQL.
 
@@ -425,7 +462,7 @@ coordinates — and then treat the log store as sensitive.
 
 ### Mock LLM (load tests without an OpenAI bill)
 
-`mock_llm.py` serves `/v1/chat/completions`. Point `OPENAI_BASE_URL` at it and
+`mock_llm/` serves `/v1/chat/completions`. Point `OPENAI_BASE_URL` at it and
 the whole stack runs for real with only the model faked. In its default
 `agent` mode it behaves like a careful tool-calling model: it reads the
 transcript, calls `get_emergency_help` / `find_pharmacies` / `geocode_place` /
@@ -442,49 +479,43 @@ no state, so any number of mock replicas answer identically.
 
 Latency is uniform between `MOCK_LLM_LATENCY_MIN_S` and `MOCK_LLM_LATENCY_MAX_S`
 (default 0.8–2.0 s). `MOCK_LLM_MODE=echo` keeps the original
-`turns_seen=N | meds=...` probe that `test_stateless.py` relies on. Token counts
+`turns_seen=N | meds=...` probe that `tests/test_stateless.py` relies on. Token counts
 are estimates (about 4 characters per token), good enough for a cost model, not
 for billing.
 
-`test_geo.py` runs the real `geo/import.sh` against PostGIS on a hand-made
-fixture and checks provider, pharmacy and emergency lookups through it,
-including a directory outage (needs `osm2pgsql`, `psql`, and
-`GEO_TEST_DATABASE_URL`; skips otherwise):
+Every test lives in `tests/` and runs with pytest. Tests that need Redis,
+Postgres, PostGIS or osm2pgsql skip cleanly when those are not configured.
 
 ```bash
+python -m pytest                                  # offline: memory mode, dummy data
+
+# Shared mode: also runs the Redis/Postgres store tests, the PostGIS import
+# tests (needs osm2pgsql + psql), and the 3-replica statelessness proof.
+REDIS_URL=redis://localhost:6379/14 \
+DATABASE_URL=postgresql://careroute:careroute@localhost:5432/careroute \
 GEO_TEST_DATABASE_URL=postgresql://careroute:careroute@localhost:5432/careroute \
-    python -m pytest -q test_geo.py
+    python -m pytest -rs
 ```
 
-Run these with `USE_REAL_PROVIDERS` unset unless noted:
+| File | What it pins down |
+|---|---|
+| `test_agent_graph.py` | graph with a scripted model: guard (incl. later turns), tracking, step cap, outage handling, emergency stickiness, patient binding, tool schemas |
+| `test_api.py` | HTTP layer: location handling, record cleanup, 422 / 503 / 429 paths |
+| `test_storage.py` | session + patient stores and the turn lock (memory and Redis) |
+| `test_security.py` | rate limiter + daily cap (memory and Redis) |
+| `test_dummy_directory.py` | offline directory and both structured-miss paths |
+| `test_interaction_log.py` | PII omitted, coordinates coarsened |
+| `test_geo.py` | the real `infra/geo/import.sh` on a fixture, then PostGIS lookups |
+| `test_pharmacy_coverage.py` | chemist detection and long Indian addresses |
+| `test_mock_llm.py` | mock model policy, OpenAI wire format, faults, full stack |
+| `test_stateless.py` | real replica processes: replica hop, hard kill, shared rate limit, turn lock |
 
-```bash
-python test_agent_langgraph.py   # offline harness for the LangGraph engine:
-                                 # scripted model, real dummy tools; verifies
-                                 # guard, tracking, step cap, outage handling,
-                                 # and tool-schema fidelity (6 tests)
-python tools.py                  # deterministic tools: record lookup, haversine
-                                 # ranking, and BOTH structured-miss paths
-python security.py               # rate limiter + daily-cap self-test (pure stdlib)
-python sessions.py               # sessions + turn lock self-test (memory or Redis)
-python patient_store.py          # copy-on-read store self-test (memory or Redis)
-python request_log.py            # logging self-test (asserts PII omitted, coords coarsened)
-python osm.py                    # live Overpass + OSRM near Koramangala (needs
-                                 # internet; also pre-warms the fetch cache)
-python mocktest.py               # exercises the OLD loop with a scripted model
-```
-
-Set `REDIS_URL` and `DATABASE_URL` and the same commands exercise the shared
-backends. With both set, `python test_stateless.py` runs the multi-replica
-proof described under **Stateless replicas**.
-
-CI runs the harness in both modes plus `test_stateless.py` (against Redis and
-Postgres service containers) before any build.
+CI runs the suite in both modes before any build.
 
 ## Deployment
 
 CareRoute runs as a single Docker container on **Azure Container Apps**. The
-container serves the FastAPI app (`server:app`) with uvicorn on port 8000, and Azure
+container serves the FastAPI app (`careroute.api.app:create_app`) with uvicorn on port 8000, and Azure
 fronts it with public HTTPS ingress.
 
 ### Architecture
@@ -495,7 +526,7 @@ flowchart TD
 
     subgraph Container["Azure Container Apps · CareRoute container"]
         direction TB
-        FA["FastAPI<br/>serves index.html + /care + /chat"]
+        FA["FastAPI<br/>serves web/index.html + /care + /chat"]
         LG["LangGraph agent"]
         TO["tools"]
         FA --> LG --> TO
@@ -617,7 +648,8 @@ paths, and HTTP 200 responses.
 `.github/workflows/deploy.yml` runs on every push to `main` (and on demand). It is a
 single job that gates on tests before it deploys, and verifies the live app after:
 
-1. **Test gate** — set up Python 3.11, install deps, run `python test_agent_langgraph.py`.
+1. **Test gate** — set up Python 3.11, install deps, run `python -m pytest` in memory mode, then again
+   against Redis + Postgres + PostGIS (including the 3-replica statelessness test).
    A failing test stops the pipeline before any build.
 2. **Build** — log in to Azure via OIDC (no stored secrets), then `az acr build` the
    image tagged with both the commit SHA and `latest`.
@@ -672,15 +704,15 @@ with "this is NOT a confirmed result".
 
 ## What I'd do next (talking points)
 
-- **Durable, multi-replica state**: swap the in-memory `MemorySaver`, sessions, and
-  rate-limit buckets for DB-backed (Sqlite/Postgres) and Redis stores so the app can
-  scale past one replica and survive restarts
-- **Cut LLM calls further**: a semantic symptom -> specialty cache (the provider-fetch
-  side is already cached deterministically in `osm.py`)
-- Real provider DB with a **geospatial index** (e.g. PostGIS) instead of a
-  per-request scan
-- Real clinical records over **FHIR / HL7** APIs instead of remapped Synthea JSON
-- **Eval + observability** (LangSmith/Langfuse) to trace each tool call and log token
-  usage per step
-- Verify emergency numbers against an authoritative per-country source; return copies
-  / immutable reads under concurrency; tighten PHI access controls
+- **Async request path**: handlers and the graph are still synchronous, so one
+  replica serves at most ~40 concurrent turns (the FastAPI threadpool). Move to
+  `ainvoke`, `AsyncPostgresSaver`, `redis.asyncio` and `httpx.AsyncClient`;
+  every I/O call already sits behind one class, so the change is contained.
+- **Push specialty matching into PostGIS**: precompute specialty / pharmacy /
+  hospital columns at import and use a KNN `ORDER BY geom <-> point LIMIT n`
+  query, instead of filtering every row in the radius in Python.
+- **Cut LLM calls**: a deterministic pre-pass (emergency detection, common
+  complaint -> specialty mappings) plus a cache, measured in calls per turn.
+- Real clinical records over **FHIR / HL7** instead of remapped Synthea JSON.
+- **Eval + observability** (LangSmith/Langfuse) for per-step traces and tokens.
+- Verify emergency numbers against an authoritative per-country source.

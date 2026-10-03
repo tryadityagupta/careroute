@@ -1,6 +1,7 @@
--- geo/healthcare.lua — osm2pgsql flex style for CareRoute's provider directory.
+-- infra/geo/healthcare.lua — osm2pgsql flex style for CareRoute's provider directory.
 --
--- Mirrors the Overpass query in osm.py tag-for-tag, so osm.py's filtering
+-- Mirrors the Overpass query in careroute/providers/osm/sources.py tag-for-tag, so the
+-- OSM directory's filtering
 -- (specialty matching, narrow-clinic filter, ER detection) sees the same data
 -- whether it came from Overpass or from here:
 --
@@ -10,7 +11,7 @@
 --   shop=* whose name says chemist ("... Medicals", "... Pharma")
 --
 -- Two deliberate differences from the Overpass query:
---   * Unnamed POIs are dropped at import. osm.py discarded them anyway ("a
+--   * Unnamed POIs are dropped at import. The directory discarded them anyway ("a
 --     place you cannot name cannot be recommended"), so storing them only
 --     makes every spatial query read rows it will throw away.
 --   * Multipolygon RELATIONS are included. Large hospital campuses are often
@@ -18,9 +19,9 @@
 --
 -- Every object becomes ONE point (ways/relations -> centroid), the same thing
 -- Overpass's `out center` gave us. The full tag set is kept as jsonb so
--- osm.py can read healthcare:speciality, emergency, etc. exactly as before.
+-- the directory can read healthcare:speciality, emergency, etc. exactly as before.
 --
--- Run by geo/import.sh, which imports into schema geo_import and then swaps
+-- Run by infra/geo/import.sh, which imports into schema geo_import and then swaps
 -- it in atomically, so a refresh never leaves the app with a half-built table.
 
 local SCHEMA = os.getenv("GEO_IMPORT_SCHEMA") or "geo_import"
@@ -42,7 +43,7 @@ local healthcare = osm2pgsql.define_table({
 local AMENITY = { hospital = true, clinic = true, doctors = true, pharmacy = true }
 local SHOP = { chemist = true, pharmacy = true, medical_supply = true, medical = true }
 
--- Keep in sync with osm.py _PHARMACY_NAME_RE (Lua patterns, lowercased name).
+-- Keep in sync with PHARMACY_NAME_RE in careroute/providers/osm/matching.py (Lua patterns, lowercased name).
 local PHARMACY_NAME = { "medical", "pharma", "chemist", "drug ?store", "aushadh" }
 
 local function pharmacy_by_name(tags)

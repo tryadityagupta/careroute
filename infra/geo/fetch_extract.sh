@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# geo/fetch_extract.sh — download OSM data for Karnataka from Geofabrik.
+# infra/geo/fetch_extract.sh — download OSM data for Karnataka from Geofabrik.
 #
 #   docker compose --profile geo-setup run --rm geo-fetch
 #
