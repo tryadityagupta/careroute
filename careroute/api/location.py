@@ -34,7 +34,8 @@ class LocationResolver:
         -> 'HSR Layout, Bengaluru South, Bengaluru Urban'."""
         return ", ".join(p.strip() for p in display_name.split(",")[:3])
 
-    def resolve(self, location_text, lat, lng, *, required: bool) -> ResolvedLocation | None:
+    async def resolve(self, location_text, lat, lng, *,
+                      required: bool) -> ResolvedLocation | None:
         """None when nothing was given and it isn't required (a follow-up that
         doesn't change location)."""
         text = (location_text or "").strip()
@@ -42,7 +43,7 @@ class LocationResolver:
             if len(text) > MAX_PLACE_CHARS:
                 raise HTTPException(422, "That location is too long. Try just your "
                                          "area or a landmark, plus the city.")
-            g = self.geocoder.geocode(text)
+            g = await self.geocoder.geocode(text)
             if "lat" not in g:
                 if g.get("error"):
                     raise HTTPException(422, "We couldn't look that place up right "

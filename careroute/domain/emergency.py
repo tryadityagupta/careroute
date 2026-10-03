@@ -17,6 +17,7 @@ product would verify numbers against an authoritative per-country source.
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 
@@ -58,18 +59,18 @@ class EmergencyNumberResolver:
             return "US"                          # US/CA share 911
         return None
 
-    def country_code(self, lat: float, lng: float) -> str | None:
+    async def country_code(self, lat: float, lng: float) -> str | None:
         key = f"{lat:.1f},{lng:.1f}"             # ~11 km: plenty for a country
         hit = self._cache.get(key)
         if hit and time.time() - hit[1] < self.TTL_S:
             return hit[0]
-        cc = self.geocoder.reverse_country(lat, lng) or self.offline_country(lat, lng)
+        cc = await self.geocoder.reverse_country(lat, lng) or self.offline_country(lat, lng)
         if cc:
             self._cache.put(key, (cc, time.time()))
         return cc
 
-    def number_for(self, lat: float, lng: float) -> tuple[str, str | None]:
-        cc = self.country_code(lat, lng)
+    async def number_for(self, lat: float, lng: float) -> tuple[str, str | None]:
+        cc = await self.country_code(lat, lng)
         return self.NUMBERS.get(cc, self.DEFAULT), cc
 
 
@@ -92,15 +93,15 @@ class EmergencyService:
                 and f.get("_er") != "no"
                 and not cls.NOT_AN_ER.search(f["name"])]
 
-    def nearest_hospitals(self, lat: float, lng: float, k: int = 3) -> list[dict]:
+    async def nearest_hospitals(self, lat: float, lng: float, k: int = 3) -> list[dict]:
         if self.directory is None:
             return []
         try:
-            facilities, err = self.directory.fetch_nearby(lat, lng, self.SEARCH_RADIUS_M)
+            facilities, err = await self.directory.fetch_nearby(lat, lng, self.SEARCH_RADIUS_M)
             if err or not facilities:
                 return []
             hosp = self.er_candidates(facilities)[:k]
-            self.directory.router.annotate(lat, lng, hosp)
+            await self.directory.router.annotate(lat, lng, hosp)
             return [{"name": h["name"], "distance_km": h["distance_km"],
                      "drive_min_no_traffic": h.get("drive_min_no_traffic"),
                      "distance_type": h.get("distance_type"),
@@ -111,8 +112,14 @@ class EmergencyService:
             print(f"[emergency] hospital lookup failed (non-fatal): {str(e)[:60]}")
             return []
 
-    def get_help(self, patient_lat: float, patient_lng: float) -> dict:
-        number, cc = self.numbers.number_for(patient_lat, patient_lng)
+    async def get_help(self, patient_lat: float, patient_lng: float) -> dict:
+        # The number (reverse geocode) and the hospitals (directory + OSRM) are
+        # independent, so they run CONCURRENTLY: the emergency answer costs the
+        # slower of the two lookups, not their sum. Neither can fail the other:
+        # nearest_hospitals never raises, and the number has offline fallbacks.
+        (number, cc), hospitals = await asyncio.gather(
+            self.numbers.number_for(patient_lat, patient_lng),
+            self.nearest_hospitals(patient_lat, patient_lng))
         return {
             "emergency": True,
             "emergency_number": number,
@@ -122,7 +129,7 @@ class EmergencyService:
                        "this FIRST, before any specialist recommendation. An ambulance "
                        "is preferable to driving themselves: the crew can start care on "
                        "the way. Drive times are without traffic."),
-            "nearest_hospitals": self.nearest_hospitals(patient_lat, patient_lng),
+            "nearest_hospitals": hospitals,
             "disclaimer": ("CareRoute cannot contact emergency services — the user must "
                            "call. Numbers are best-effort by location; 112 reaches "
                            "emergency services in many countries if unsure."),

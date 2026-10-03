@@ -9,15 +9,18 @@ NOMINATIM_URL points at the self-hosted `nominatim` Compose service. Unset,
 it falls back to the public server, whose usage policy is at most 1 request
 per second — so ONLY the public server is throttled (throttling a self-hosted
 instance would serialise every geocode on the replica for no reason).
+
+ASYNC: the throttle waits with asyncio.sleep under an asyncio.Lock, so a
+throttled geocode parks one coroutine instead of blocking the whole replica.
 """
 
 from __future__ import annotations
 
+import asyncio
 import re
-import threading
 import time
 
-import requests
+import httpx
 
 from careroute.config import PUBLIC_NOMINATIM
 from careroute.maps.cache import LRUCache
@@ -33,44 +36,46 @@ class NominatimGeocoder:
     _HOUSE_NO = re.compile(r"(#|no\.?\s*)?[\d/\-\s]+[a-z]?", re.I)
 
     def __init__(self, base_url: str = PUBLIC_NOMINATIM, *, countries: str = "in",
-                 cache_size: int = 10000, session: requests.Session | None = None):
+                 cache_size: int = 10000, client: httpx.AsyncClient | None = None):
         self.base_url = base_url.rstrip("/")
         self.countries = countries.strip()
         self.throttled = self.base_url == PUBLIC_NOMINATIM
-        self._http = session or requests.Session()
+        self._http = client or httpx.AsyncClient()
         # A named place resolves to the same point every time: never look one
         # up twice. Bounded, so user-typed strings can't grow memory forever.
         self._cache = LRUCache(cache_size)
-        self._throttle_lock = threading.Lock()
+        self._throttle_lock: asyncio.Lock | None = None    # made on the loop
         self._last_call = 0.0
 
     # --- HTTP ----------------------------------------------------------------
-    def _wait_turn(self) -> None:
+    async def _wait_turn(self) -> None:
         if not self.throttled:
             return
-        with self._throttle_lock:
+        if self._throttle_lock is None:
+            self._throttle_lock = asyncio.Lock()
+        async with self._throttle_lock:
             wait = 1.0 - (time.time() - self._last_call)
             if wait > 0:
-                time.sleep(wait)
+                await asyncio.sleep(wait)
             self._last_call = time.time()
 
-    def _search(self, query: str) -> list[dict]:
+    async def _search(self, query: str) -> list[dict]:
         """One raw /search call. Tests override this method."""
-        self._wait_turn()
+        await self._wait_turn()
         params = {"q": query, "format": "jsonv2", "limit": 1}
         if self.countries:
             params["countrycodes"] = self.countries
-        resp = self._http.get(f"{self.base_url}/search", params=params,
+        resp = await self._http.get(f"{self.base_url}/search", params=params,
                               headers={"User-Agent": _USER_AGENT},
                               timeout=10 if self.throttled else 3)
         resp.raise_for_status()
         return resp.json()
 
-    def reverse_country(self, lat: float, lng: float) -> str | None:
+    async def reverse_country(self, lat: float, lng: float) -> str | None:
         """ISO country code for a point, or None. Raises nothing: the caller
         (the emergency number) must never depend on this succeeding."""
         try:
-            resp = self._http.get(
+            resp = await self._http.get(
                 f"{self.base_url}/reverse",
                 params={"lat": lat, "lon": lng, "format": "json", "zoom": 3},
                 headers={"User-Agent": _USER_AGENT},
@@ -78,7 +83,7 @@ class NominatimGeocoder:
             resp.raise_for_status()
             cc = (resp.json().get("address", {}).get("country_code") or "").upper()
             return cc or None
-        except (requests.RequestException, ValueError) as e:
+        except (httpx.HTTPError, ValueError) as e:
             print(f"[geocoding] reverse-geocode failed ({str(e)[:60]})")
             return None
 
@@ -109,7 +114,7 @@ class NominatimGeocoder:
         return queries[:6]
 
     # --- Public API --------------------------------------------------------
-    def geocode(self, place: str) -> dict:
+    async def geocode(self, place: str) -> dict:
         """{lat, lng, display_name, matched_query, approximate, broad}, or an
         error dict, or {match_found: False, reason}.
 
@@ -125,8 +130,8 @@ class NominatimGeocoder:
         queries = self.fallback_queries(place)
         for q in queries:
             try:
-                hits = self._search(q)
-            except requests.RequestException as e:
+                hits = await self._search(q)
+            except httpx.HTTPError as e:
                 return {"error": f"Geocoding failed: {e}"}
             if not hits:
                 continue

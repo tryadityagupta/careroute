@@ -15,15 +15,15 @@ directory with the SAME typed error payload, because "the lookup failed" and
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import threading
 import time
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import requests
+import httpx
 
 from careroute.maps.postgis import GeoDatabase, GeoUnavailable
 from careroute.providers.osm.matching import PHARMACY_NAME_RE
@@ -55,7 +55,7 @@ class ElementSource(ABC):
     name: str = "abstract"
 
     @abstractmethod
-    def elements(self, lat: float, lng: float, radius_m: int) -> tuple[Elements | None, dict | None]:
+    async def elements(self, lat: float, lng: float, radius_m: int) -> tuple[Elements | None, dict | None]:
         """(elements, None) on success, (None, error_payload) on failure."""
 
 
@@ -66,10 +66,10 @@ class PostgisSource(ElementSource):
     def __init__(self, db: GeoDatabase):
         self.db = db
 
-    def elements(self, lat, lng, radius_m):
+    async def elements(self, lat, lng, radius_m):
         t0 = time.perf_counter()
         try:
-            rows = self.db.nearby_elements(lat, lng, radius_m)
+            rows = await self.db.nearby_elements(lat, lng, radius_m)
         except GeoUnavailable as e:
             print(f"[osm] postgis lookup failed: {e}")
             return None, unreachable_payload(e)
@@ -106,8 +106,10 @@ class OverpassDiskCache:
     def _save(self) -> None:
         try:
             os.makedirs(self.path.parent, exist_ok=True)
-            with self._lock, open(self.path, "w", encoding="utf-8") as f:
-                json.dump(self._data, f)
+            with self._lock:
+                blob = json.dumps(self._data)
+            with open(self.path, "w", encoding="utf-8") as f:
+                f.write(blob)
         except (OSError, RuntimeError) as e:     # RuntimeError: dict changed mid-dump
             print(f"[osm] cache write failed (non-fatal): {e}")
 
@@ -134,11 +136,13 @@ class OverpassDiskCache:
                 best = (r, hit)
         return best[1] if best else None
 
-    def put(self, lat, lng, radius_m, elements, now) -> None:
+    async def put(self, lat, lng, radius_m, elements, now) -> None:
         with self._lock:
             self._data[f"{self._prefix(lat, lng)}{int(radius_m)}"] = {
                 "fetched_at": now, "elements": elements}
-        self._save()
+        # Serialising the whole cache can take a while: do it on a worker
+        # thread, never on the event loop that is serving other users.
+        await asyncio.to_thread(self._save)
 
 
 class OverpassSource(ElementSource):
@@ -157,9 +161,11 @@ class OverpassSource(ElementSource):
     RETRY_BACKOFF_S = 1.5
     _HEADERS = {"User-Agent": "CareRoute-demo/1.0 (learning project)"}
 
-    def __init__(self, cache: OverpassDiskCache, endpoints=ENDPOINTS):
+    def __init__(self, cache: OverpassDiskCache, endpoints=ENDPOINTS,
+                 client: httpx.AsyncClient | None = None):
         self.cache = cache
         self.endpoints = tuple(endpoints)
+        self._http = client or httpx.AsyncClient()
 
     @staticmethod
     def build_query(lat, lng, radius_m) -> str:
@@ -182,31 +188,34 @@ class OverpassSource(ElementSource):
     out center tags;
     """
 
-    def _post(self, url: str, query: str) -> Elements:
-        resp = requests.post(url, data={"data": query}, headers=self._HEADERS,
-                             timeout=self.HTTP_TIMEOUT_S)
+    async def _post(self, url: str, query: str) -> Elements:
+        resp = await self._http.post(url, data={"data": query}, headers=self._HEADERS,
+                                     timeout=self.HTTP_TIMEOUT_S)
         resp.raise_for_status()
-        # .json() inside the worker: a 200 with an HTML error page counts as a
+        # Parse inside the racer: a 200 with an HTML error page counts as a
         # failure and the race continues.
         return resp.json().get("elements", [])
 
-    def _race(self, query: str):
-        """First mirror to succeed wins: (elements, None) or (None, last_error)."""
-        ex = ThreadPoolExecutor(max_workers=len(self.endpoints))
-        futures = {ex.submit(self._post, u, query): u for u in self.endpoints}
-        last_error = None
+    async def _race(self, query: str):
+        """First mirror to succeed wins: (elements, None) or (None, last_error).
+        The losers are cancelled as soon as there is a winner."""
+        tasks = {asyncio.create_task(self._post(u, query)): u for u in self.endpoints}
+        pending, last_error = set(tasks), None
         try:
-            for fut in as_completed(futures):
-                try:
-                    return fut.result(), None
-                except (requests.RequestException, ValueError) as e:
-                    last_error = e
-                    print(f"[osm] {futures[fut]} failed: {str(e)[:90]}")
+            while pending:
+                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                for t in done:
+                    try:
+                        return t.result(), None
+                    except (httpx.HTTPError, ValueError) as e:
+                        last_error = e
+                        print(f"[osm] {tasks[t]} failed: {str(e)[:90]}")
             return None, last_error
         finally:
-            ex.shutdown(wait=False, cancel_futures=True)
+            for t in pending:
+                t.cancel()
 
-    def elements(self, lat, lng, radius_m):
+    async def elements(self, lat, lng, radius_m):
         now = time.time()
         hit = self.cache.find(lat, lng, radius_m, now)
         if hit:
@@ -214,15 +223,15 @@ class OverpassSource(ElementSource):
 
         query = self.build_query(lat, lng, radius_m)
         t0 = time.perf_counter()
-        elements, last_error = self._race(query)
+        elements, last_error = await self._race(query)
         if elements is None and time.perf_counter() - t0 < self.RETRY_IF_FAILED_WITHIN_S:
             print("[osm] all mirrors failed fast — one more race")
-            time.sleep(self.RETRY_BACKOFF_S)
-            elements, last_error = self._race(query)
+            await asyncio.sleep(self.RETRY_BACKOFF_S)
+            elements, last_error = await self._race(query)
         print(f"[osm] overpass fetch r={radius_m} took "
               f"{time.perf_counter() - t0:.1f}s ok={elements is not None}")
         if elements is not None:
-            self.cache.put(lat, lng, radius_m, elements, now)
+            await self.cache.put(lat, lng, radius_m, elements, now)
             return elements, None
 
         stale = self.cache.find(lat, lng, radius_m, now, fresh=False)

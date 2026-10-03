@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import copy
 import json
-import threading
 import time
 from abc import ABC, abstractmethod
 
@@ -29,40 +28,36 @@ class PatientStore(ABC):
         self.ttl_s = ttl_s            # records expire with their conversation
 
     @abstractmethod
-    def get(self, patient_id: str) -> dict | None: ...
+    async def get(self, patient_id: str) -> dict | None: ...
 
     @abstractmethod
-    def put(self, patient_id: str, record: dict, ttl: int | None = None) -> None: ...
+    async def put(self, patient_id: str, record: dict, ttl: int | None = None) -> None: ...
 
     @abstractmethod
-    def delete(self, patient_id: str) -> None: ...
+    async def delete(self, patient_id: str) -> None: ...
 
 
 class MemoryPatientStore(PatientStore):
     def __init__(self, ttl_s: int = 1800):
         super().__init__(ttl_s)
         self._recs: dict[str, tuple[dict, float]] = {}
-        self._lock = threading.Lock()
 
-    def get(self, patient_id):
-        with self._lock:
-            item = self._recs.get(patient_id)
-            if item is None:
-                return None
-            rec, expires = item
-            if expires < time.monotonic():
-                self._recs.pop(patient_id, None)
-                return None
-            return copy.deepcopy(rec)
-
-    def put(self, patient_id, record, ttl=None):
-        with self._lock:
-            self._recs[patient_id] = (copy.deepcopy(record),
-                                      time.monotonic() + (ttl or self.ttl_s))
-
-    def delete(self, patient_id):
-        with self._lock:
+    async def get(self, patient_id):
+        item = self._recs.get(patient_id)
+        if item is None:
+            return None
+        rec, expires = item
+        if expires < time.monotonic():
             self._recs.pop(patient_id, None)
+            return None
+        return copy.deepcopy(rec)
+
+    async def put(self, patient_id, record, ttl=None):
+        self._recs[patient_id] = (copy.deepcopy(record),
+                                  time.monotonic() + (ttl or self.ttl_s))
+
+    async def delete(self, patient_id):
+        self._recs.pop(patient_id, None)
 
 
 class RedisPatientStore(PatientStore):
@@ -73,12 +68,12 @@ class RedisPatientStore(PatientStore):
     def _k(self, pid: str) -> str:
         return self.redis.key("patient", pid)
 
-    def get(self, patient_id):
-        raw = self.redis.client.get(self._k(patient_id))
+    async def get(self, patient_id):
+        raw = await self.redis.client.get(self._k(patient_id))
         return json.loads(raw) if raw else None
 
-    def put(self, patient_id, record, ttl=None):
-        self.redis.client.set(self._k(patient_id), json.dumps(record), ex=ttl or self.ttl_s)
+    async def put(self, patient_id, record, ttl=None):
+        await self.redis.client.set(self._k(patient_id), json.dumps(record), ex=ttl or self.ttl_s)
 
-    def delete(self, patient_id):
-        self.redis.client.delete(self._k(patient_id))
+    async def delete(self, patient_id):
+        await self.redis.client.delete(self._k(patient_id))

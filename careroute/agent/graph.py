@@ -16,13 +16,20 @@ Two compiled forms of the SAME graph:
   * conversational (/chat) — with a checkpointer, keyed by thread_id (= the
     session id), so turn 2 on another replica sees turn 1.
 
-`model` is a public attribute: anything with .invoke(messages) -> AIMessage.
-Production passes ChatOpenAI.bind_tools(...); tests pass a scripted model.
+`model` is a public attribute: anything with an async
+.ainvoke(messages) -> AIMessage. Production passes ChatOpenAI.bind_tools(...);
+tests pass a scripted model.
+
+ASYNC end to end: every node is a coroutine, the model is awaited, tools are
+awaited (concurrently when one reply asks for several), and the checkpointer
+is AsyncPostgresSaver. A turn spends most of its life waiting on the model;
+while it waits, the replica's event loop serves other turns — there is no
+worker thread held per request any more.
 """
 
 from __future__ import annotations
 
-import threading
+import asyncio
 import time
 
 from langchain_core.messages import (AIMessage, HumanMessage, RemoveMessage,
@@ -54,7 +61,7 @@ class CareRouteAgent:
         self._builder = self._build_graph()
         self.graph = self._builder.compile()
         self._conversation_graph = None
-        self._conv_lock = threading.Lock()
+        self._conv_lock: asyncio.Lock | None = None
 
     # ------------------------------------------------------------------
     # Graph
@@ -73,14 +80,15 @@ class CareRouteAgent:
         b.add_edge("stop", END)
         return b
 
-    @property
-    def conversation_graph(self):
+    async def conversation_graph(self):
         """The graph compiled WITH a checkpointer, built on first use."""
         if self._conversation_graph is None:
-            with self._conv_lock:
+            if self._conv_lock is None:
+                self._conv_lock = asyncio.Lock()
+            async with self._conv_lock:
                 if self._conversation_graph is None:
                     self._conversation_graph = self._builder.compile(
-                        checkpointer=self.checkpointers.get())
+                        checkpointer=await self.checkpointers.get())
         return self._conversation_graph
 
     @staticmethod
@@ -94,7 +102,7 @@ class CareRouteAgent:
                 if i < last_human and isinstance(m, ToolMessage) else m
                 for i, m in enumerate(messages)]
 
-    def _agent_node(self, state: CareRouteState):
+    async def _agent_node(self, state: CareRouteState):
         """REASON: ask the model what to do next. The system prompt is added
         here, never stored, so a prompt edit can't break a saved conversation."""
         prompt = SYSTEM_PROMPT
@@ -104,19 +112,22 @@ class CareRouteAgent:
         if not messages or not isinstance(messages[0], SystemMessage):
             messages = [SystemMessage(content=prompt), *messages]
         t0 = time.perf_counter()
-        response = self.model.invoke(self._compact(messages))
+        # ainvoke: while the model thinks (seconds), this replica serves others.
+        response = await self.model.ainvoke(self._compact(messages))
         n = state.get("llm_calls", 0) + 1
         print(f" [call {n}] LLM took {time.perf_counter() - t0:.1f}s")
         for call in response.tool_calls:
             print(f" [call {n}] model called: {call['name']}({call['args']})")
         return {"messages": [response], "llm_calls": n}
 
-    def _tools_node(self, state: CareRouteState, config: RunnableConfig):
+    async def _tools_node(self, state: CareRouteState, config: RunnableConfig):
         """ACT + OBSERVE, then sort every returned facility name into
         confirmed (a success list from find_providers / find_pharmacies) or
         offered (anything else). The guard is only as good as this sorting."""
         t0 = time.perf_counter()
-        result = self._tool_node.invoke(state, config)   # config carries the patient binding
+        # config carries the patient binding. Several tool calls in one model
+        # reply run CONCURRENTLY (ToolNode gathers async tools).
+        result = await self._tool_node.ainvoke(state, config)
         print(f"          tools took {time.perf_counter() - t0:.1f}s")
 
         confirmed = set(state.get("confirmed_providers") or ())
@@ -152,7 +163,7 @@ class CareRouteAgent:
                 "is_emergency": is_emergency,
                 "emergency_number": emergency_number}
 
-    def _guard_node(self, state: CareRouteState):
+    async def _guard_node(self, state: CareRouteState):
         """If the answer must change, REMOVE the model's message and append the
         guarded one, so the transcript never keeps the untrusted version."""
         final = state["messages"][-1]
@@ -165,7 +176,7 @@ class CareRouteAgent:
             swap.insert(0, RemoveMessage(id=final.id))
         return {"messages": swap}
 
-    def _stop_node(self, state: CareRouteState):
+    async def _stop_node(self, state: CareRouteState):
         """Budget spent mid-plan. The dangling assistant message still REQUESTS
         tools; leaving it would corrupt the transcript (OpenAI rejects a tool
         call with no result), so it is replaced by a plain statement."""
@@ -201,25 +212,27 @@ class CareRouteAgent:
         trace["llm_calls"] = final_state.get("llm_calls", trace["llm_calls"])
         return text_of(msgs[-1]), trace
 
-    def run_single(self, user_request: str, *, patient_id: str | None = None) -> tuple[str, dict]:
+    async def run_single(self, user_request: str, *,
+                         patient_id: str | None = None) -> tuple[str, dict]:
         """One self-contained request (/care). Returns (answer, trace)."""
-        final = self.graph.invoke(
+        final = await self.graph.ainvoke(
             {"messages": [HumanMessage(content=user_request)], **fresh_conversation()},
             config=self._config(patient_id))
         return self._finish(final)
 
-    def run_turn(self, user_message: str, *, thread_id: str, patient_id: str | None = None,
-                 new_conversation: bool | None = None) -> tuple[str, dict]:
+    async def run_turn(self, user_message: str, *, thread_id: str,
+                       patient_id: str | None = None,
+                       new_conversation: bool | None = None) -> tuple[str, dict]:
         """One turn of a conversation (/chat). Returns (answer, trace).
 
         new_conversation: pass it when you know (the server does: turn 1 vs
         later) to skip a checkpoint read. None = ask the checkpointer.
         """
-        conv = self.conversation_graph
+        conv = await self.conversation_graph()
         config = self._config(patient_id, thread_id)
         if new_conversation is None:
             try:
-                new_conversation = not conv.get_state(config).values
+                new_conversation = not (await conv.aget_state(config)).values
             except Exception:
                 new_conversation = True
         turn = {"messages": [HumanMessage(content=user_message)],
@@ -228,5 +241,5 @@ class CareRouteAgent:
         # per graph step (~5-10x fewer writes). If a replica dies mid-turn, the
         # conversation resumes from the previous turn — what a user expects
         # after an error anyway.
-        final = conv.invoke(turn, config=config, durability="exit")
+        final = await conv.ainvoke(turn, config=config, durability="exit")
         return self._finish(final)

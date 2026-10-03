@@ -11,11 +11,17 @@ infra/geo/import.sh; this changes WHERE it is served from, not what it is.
 
 Rows come back in Overpass's element shape ({lat, lon, tags}) so the OSM
 directory's filtering runs unchanged on either source.
+
+ASYNC: psycopg's AsyncConnectionPool. An async pool must be OPENED on the
+running event loop, so it is opened lazily on first use (under an
+asyncio.Lock) and closed by Container.aclose() at shutdown.
 """
 
 from __future__ import annotations
 
-import threading
+import asyncio
+
+from careroute.runtime import ensure_psycopg_compatible_loop
 
 
 class GeoUnavailable(Exception):
@@ -42,43 +48,56 @@ WHERE ST_DWithin(geom::geography,
         # rather than hold a pooled connection while users queue behind it.
         self.statement_timeout_ms = statement_timeout_ms
         self._pool = None
-        self._lock = threading.Lock()
+        self._lock: asyncio.Lock | None = None
 
-    def pool(self):
-        """The connection pool, opened on first use (double-checked lock)."""
+    async def pool(self):
+        """The async connection pool, opened on first use."""
         if self._pool is None:
-            with self._lock:
+            if self._lock is None:
+                self._lock = asyncio.Lock()
+            async with self._lock:
                 if self._pool is None:
                     if not self.dsn:
                         raise GeoUnavailable(
                             "OSM_SOURCE=postgis but neither GEO_DATABASE_URL "
                             "nor DATABASE_URL is set")
-                    from psycopg_pool import ConnectionPool
-                    self._pool = ConnectionPool(
-                        self.dsn, min_size=1, max_size=self.pool_max, open=True,
+                    ensure_psycopg_compatible_loop()     # clear error on Windows
+                    from psycopg_pool import AsyncConnectionPool
+                    pool = AsyncConnectionPool(
+                        self.dsn, min_size=1, max_size=self.pool_max, open=False,
                         kwargs={"autocommit": True,
                                 "options": f"-c statement_timeout={self.statement_timeout_ms}"})
+                    try:
+                        await pool.open(wait=True, timeout=2)
+                    except Exception:
+                        await pool.close()
+                        raise
+                    self._pool = pool
         return self._pool
 
-    def nearby_elements(self, lat: float, lng: float, radius_m: int) -> list[dict]:
+    async def nearby_elements(self, lat: float, lng: float, radius_m: int) -> list[dict]:
         """Every named healthcare POI within radius_m metres, Overpass-shaped."""
         try:
-            with self.pool().connection(timeout=2) as conn:
-                rows = conn.execute(self.NEARBY_SQL, {
-                    "lat": lat, "lng": lng, "radius_m": radius_m}).fetchall()
+            pool = await self.pool()
+            async with pool.connection(timeout=2) as conn:
+                cur = await conn.execute(self.NEARBY_SQL, {
+                    "lat": lat, "lng": lng, "radius_m": radius_m})
+                rows = await cur.fetchall()
         except GeoUnavailable:
             raise
         except Exception as e:         # psycopg errors, pool timeout, missing table
             raise GeoUnavailable(f"{type(e).__name__}: {str(e)[:120]}") from e
         return [{"lat": r[0], "lon": r[1], "tags": r[2]} for r in rows]
 
-    def dataset_info(self) -> dict:
+    async def dataset_info(self) -> dict:
         """Row count and data date, for /healthz. Raises GeoUnavailable if the
         import has never been run."""
         try:
-            with self.pool().connection(timeout=2) as conn:
-                row = conn.execute(
-                    "SELECT rows, extract_date, imported_at FROM geo.dataset").fetchone()
+            pool = await self.pool()
+            async with pool.connection(timeout=2) as conn:
+                cur = await conn.execute(
+                    "SELECT rows, extract_date, imported_at FROM geo.dataset")
+                row = await cur.fetchone()
         except GeoUnavailable:
             raise
         except Exception as e:
@@ -88,7 +107,7 @@ WHERE ST_DWithin(geom::geography,
         return {"rows": row[0], "extract_date": row[1],
                 "imported_at": row[2].isoformat()}
 
-    def close(self) -> None:
+    async def aclose(self) -> None:
         if self._pool is not None:
-            self._pool.close()
+            await self._pool.close()
             self._pool = None

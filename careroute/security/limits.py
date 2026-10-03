@@ -31,7 +31,7 @@ class RateLimiter(ABC):
         self.burst = float(burst)
 
     @abstractmethod
-    def check(self, key: str) -> tuple[bool, float]:
+    async def check(self, key: str) -> tuple[bool, float]:
         """(allowed, retry_after_seconds); retry_after is 0 when allowed."""
 
 
@@ -40,7 +40,7 @@ class DailyCap(ABC):
         self.cap = cap                          # <= 0 disables the cap
 
     @abstractmethod
-    def allow(self) -> bool: ...
+    async def allow(self) -> bool: ...
 
 
 class _Bucket:
@@ -60,7 +60,7 @@ class MemoryRateLimiter(RateLimiter):
         self._lock = threading.Lock()
         self._last_prune = time.monotonic()
 
-    def check(self, key):
+    async def check(self, key):
         now = time.monotonic()
         with self._lock:
             b = self._buckets.get(key)
@@ -94,7 +94,7 @@ class MemoryDailyCap(DailyCap):
         self._count = 0
         self._lock = threading.Lock()
 
-    def allow(self):
+    async def allow(self):
         if self.cap <= 0:
             return True
         today = time.gmtime().tm_yday          # flips at UTC midnight
@@ -139,9 +139,9 @@ return {allowed, tostring(retry)}
         self.redis = redis
         self._script = redis.client.register_script(self._BUCKET_LUA)
 
-    def check(self, key):
-        allowed, retry = self._script(keys=[self.redis.key("ratelimit", key)],
-                                      args=[self.rate, self.burst])
+    async def check(self, key):
+        allowed, retry = await self._script(keys=[self.redis.key("ratelimit", key)],
+                                            args=[self.rate, self.burst])
         return bool(int(allowed)), float(retry)
 
 
@@ -152,12 +152,12 @@ class RedisDailyCap(DailyCap):
         super().__init__(cap)
         self.redis = redis
 
-    def allow(self):
+    async def allow(self):
         if self.cap <= 0:
             return True
         k = self.redis.key("daily", time.strftime("%Y-%m-%d", time.gmtime()))
         pipe = self.redis.client.pipeline()
         pipe.incr(k)
         pipe.expire(k, 2 * 86400)
-        n, _ = pipe.execute()
+        n, _ = await pipe.execute()
         return n <= self.cap

@@ -34,14 +34,14 @@ def make_settings(**overrides) -> Settings:
 
 
 class ScriptedModel:
-    """Duck-types a tool-bound chat model: .invoke() pops the next scripted
+    """Duck-types a tool-bound chat model: .ainvoke() pops the next scripted
     AIMessage and records what the graph sent (so tests can read the prompt)."""
 
     def __init__(self, script):
         self.script = list(script)
         self.seen = []
 
-    def invoke(self, messages):
+    async def ainvoke(self, messages):
         self.seen.append(list(messages))
         return self.script.pop(0)
 
@@ -52,7 +52,7 @@ class FailingModel:
     def __init__(self, exc: Exception):
         self.exc = exc
 
-    def invoke(self, messages):
+    async def ainvoke(self, messages):
         raise self.exc
 
 
@@ -68,14 +68,14 @@ class FakeGeocoder(NominatimGeocoder):
         self.known = known or {}
         self.country = country
 
-    def _search(self, query):
+    async def _search(self, query):
         if query in self.known:
             lat, lng, rank = self.known[query]
             return [{"lat": str(lat), "lon": str(lng), "place_rank": rank,
                      "display_name": f"{query}, Bengaluru, Karnataka, India"}]
         return []
 
-    def reverse_country(self, lat, lng):
+    async def reverse_country(self, lat, lng):
         return self.country
 
 
@@ -87,8 +87,14 @@ class StaticSource:
         self._elements = elements or []
         self._error = error
 
-    def elements(self, lat, lng, radius_m):
+    async def elements(self, lat, lng, radius_m):
         return (None, self._error) if self._error else (self._elements, None)
+
+
+# Containers made in the current test, closed by close_containers(). Each test
+# runs on its own event loop, and a Redis client or Postgres pool must be
+# closed on the loop that opened it.
+_OPEN: list[Container] = []
 
 
 def make_container(model=None, **settings_overrides) -> Container:
@@ -96,4 +102,17 @@ def make_container(model=None, **settings_overrides) -> Container:
     c.geocoder = FakeGeocoder()
     c.osm_source = StaticSource()          # emergency hospital lookups: no network
     c.model = model or ScriptedModel([])
+    _OPEN.append(c)
     return c
+
+
+async def close_containers() -> None:
+    while _OPEN:
+        await _OPEN.pop().aclose()
+
+
+def as_async(value):
+    """Wrap a fixed value as an async callable (to stub a coroutine method)."""
+    async def stub(*args, **kwargs):
+        return value
+    return stub

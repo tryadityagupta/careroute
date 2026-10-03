@@ -3,6 +3,11 @@ tests/test_api.py — the HTTP layer, through FastAPI's TestClient.
 
 The whole app runs for real (gate, services, agent, stores) with a scripted
 model and a fake geocoder injected through the Container.
+
+TestClient is always used as a context manager: that runs the app's lifespan
+(which closes the container's pools at the end) and keeps ONE event loop for
+the whole test. Reading async stores from the test goes through that same
+loop with client.portal.call(...).
 """
 
 import httpx
@@ -11,11 +16,18 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
 from careroute.api.app import create_app
+from careroute.runtime import ANYIO_BACKEND_OPTIONS
+from tests import fakes
 from tests.fakes import FailingModel, FakeGeocoder, ScriptedModel, call, make_container
 
 
-def client_for(container):
-    return TestClient(create_app(container))
+def client_for(container) -> TestClient:
+    # The app's lifespan closes this container; don't close it twice.
+    if container in fakes._OPEN:
+        fakes._OPEN.remove(container)
+    # TestClient starts its own event loop: give it the one async psycopg
+    # accepts on Windows (careroute/runtime.py).
+    return TestClient(create_app(container), backend_options=ANYIO_BACKEND_OPTIONS)
 
 
 def test_chat_location_from_gps_or_from_the_message():
@@ -23,7 +35,12 @@ def test_chat_location_from_gps_or_from_the_message():
     user names the place in chat and the agent geocodes it."""
     c = make_container()
     c.geocoder = FakeGeocoder({"HSR Layout, Bengaluru": (12.91, 77.64, 20)})
-    http = client_for(c)
+    with client_for(c) as http:
+        _location_flow(c, http)
+
+
+def _location_flow(c, http):
+    call_async = http.portal.call           # run a coroutine on the app's loop
 
     # 1) No GPS, no place: allowed; the model is told location=UNKNOWN.
     model = ScriptedModel([AIMessage(content="Where are you?", id="q1")])
@@ -32,7 +49,7 @@ def test_chat_location_from_gps_or_from_the_message():
     assert r.status_code == 200 and r.json()["location"] is None
     assert "location=UNKNOWN" in model.seen[0][-1].content
     sid = r.json()["session_id"]
-    pid = c.sessions.get_session(sid)["patient_id"]
+    pid = call_async(c.sessions.get_session, sid)["patient_id"]
 
     # 2) The user names the place: the agent geocodes and saves it, and the
     #    page is told where the search now happens.
@@ -46,29 +63,40 @@ def test_chat_location_from_gps_or_from_the_message():
     ])
     r2 = http.post("/chat", json={"message": "I'm in HSR Layout, Bengaluru",
                                   "session_id": sid}).json()
-    assert c.patients.get(pid)["lat"] == 12.91
-    assert r2["location"] == {"label": "HSR Layout, Bengaluru", "source": "chat"}
+    assert call_async(c.patients.get, pid)["lat"] == 12.91
+    assert r2["location"] == {
+        "label": "HSR Layout, Bengaluru", "source": "chat"}
 
     # 3) GPS on turn 1; a follow-up without coordinates must not move the patient.
     c.agent.model = ScriptedModel([AIMessage(content="ok", id="p1"),
                                    AIMessage(content="ok", id="p2")])
-    r3 = http.post("/chat", json={"message": "fever", "lat": 12.97, "lng": 77.64}).json()
-    pid3 = c.sessions.get_session(r3["session_id"])["patient_id"]
-    http.post("/chat", json={"message": "and a cough", "session_id": r3["session_id"]})
-    assert c.patients.get(pid3)["lat"] == 12.97
+    r3 = http.post("/chat", json={"message": "fever",
+                   "lat": 12.97, "lng": 77.64}).json()
+    pid3 = call_async(c.sessions.get_session, r3["session_id"])["patient_id"]
+    http.post("/chat", json={"message": "and a cough",
+              "session_id": r3["session_id"]})
+    assert call_async(c.patients.get, pid3)["lat"] == 12.97
 
 
 def test_care_endpoint_cleans_up_its_record():
     c = make_container()
     c.agent.model = ScriptedModel([AIMessage(content="See a GP.", id="c1")])
-    r = client_for(c).post("/care", json={"symptoms": "fever", "lat": 12.97, "lng": 77.64})
-    assert r.status_code == 200 and r.json()["answer"] == "See a GP."
-    assert r.json()["location"]["source"] == "gps"
+    with client_for(c) as http:
+        r = http.post(
+            "/care", json={"symptoms": "fever", "lat": 12.97, "lng": 77.64})
+        assert r.status_code == 200 and r.json()["answer"] == "See a GP."
+        assert r.json()["location"]["source"] == "gps"
+        # The single-shot record is deleted once the answer is out.
+        pid = c.agent.model.seen[0][-1].content.split()[1]
+        assert pid.startswith("LIVE-")
+        assert http.portal.call(c.patient_store.get, pid) is None
 
 
 def test_typed_place_that_cannot_be_found_is_a_friendly_422():
     c = make_container()
-    r = client_for(c).post("/chat", json={"message": "fever", "location_text": "Atlantis"})
+    with client_for(c) as http:
+        r = http.post(
+            "/chat", json={"message": "fever", "location_text": "Atlantis"})
     assert r.status_code == 422 and "couldn't find" in r.json()["detail"]
 
 
@@ -77,7 +105,9 @@ def test_llm_outage_is_503_with_the_emergency_number():
     c = make_container()
     req = httpx.Request("POST", "http://mock/v1/chat/completions")
     c.agent.model = FailingModel(openai.APIConnectionError(request=req))
-    r = client_for(c).post("/chat", json={"message": "chest pain", "lat": 12.97, "lng": 77.64})
+    with client_for(c) as http:
+        r = http.post(
+            "/chat", json={"message": "chest pain", "lat": 12.97, "lng": 77.64})
     assert r.status_code == 503
     assert "112" in r.json()["detail"]
     assert r.headers.get("retry-after") == "5"
@@ -86,10 +116,13 @@ def test_llm_outage_is_503_with_the_emergency_number():
 def test_rate_limit_applies_to_chat():
     c = make_container(rate_per_min=1, burst=2)
     c.agent.model = ScriptedModel([])
-    http = client_for(c)
-    codes = [http.post("/chat", json={"message": " "}).status_code for _ in range(4)]
-    assert codes == [400, 400, 429, 429]       # blank message: rejected AFTER the gate
+    with client_for(c) as http:
+        codes = [
+            http.post("/chat", json={"message": " "}).status_code for _ in range(4)]
+    # blank message: rejected AFTER the gate
+    assert codes == [400, 400, 429, 429]
 
 
 def test_version_reports_backend():
-    assert client_for(make_container()).get("/version").json()["backend"] == "dummy-json"
+    with client_for(make_container()) as http:
+        assert http.get("/version").json()["backend"] == "dummy-json"
