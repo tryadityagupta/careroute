@@ -51,7 +51,7 @@ class LangChainToolkit:
         care = self.care
 
         @tool
-        def get_patient_record(
+        async def get_patient_record(
             patient_id: Annotated[str, "The patient's ID, e.g. 'P001'"],
             config: RunnableConfig,
         ) -> dict:
@@ -61,10 +61,10 @@ class LangChainToolkit:
             bound = _bound_patient(config)
             if bound and patient_id != bound:
                 return _refuse(patient_id)
-            return care.get_patient_record(patient_id)
+            return await care.get_patient_record(patient_id)
 
         @tool
-        def geocode_place(
+        async def geocode_place(
             place: Annotated[str, "A place name to resolve, e.g. 'Guwahati'"],
         ) -> dict:
             """Resolve a place NAME to coordinates. Call this whenever the user gives a
@@ -72,10 +72,10 @@ class LangChainToolkit:
             patient's stored coordinates. Feed the returned lat/lng into the search
             tools so the search happens THERE. Never guess coordinates, and never claim
             a result is in a city you did not resolve with this tool."""
-            return care.geocode_place(place)
+            return await care.geocode_place(place)
 
         @tool
-        def update_patient_record(
+        async def update_patient_record(
             patient_id: Annotated[str, "The patient's ID"],
             config: RunnableConfig,
             name: Annotated[str | None, "Patient name, if the user stated it"] = None,
@@ -93,12 +93,12 @@ class LangChainToolkit:
             bound = _bound_patient(config)
             if bound and patient_id != bound:
                 return _refuse(patient_id)
-            return care.update_patient_record(patient_id=patient_id, name=name,
+            return await care.update_patient_record(patient_id=patient_id, name=name,
                                               medications=medications, lat=lat,
                                               lng=lng, area=area)
 
         @tool
-        def find_providers(
+        async def find_providers(
             specialty: Annotated[str, "Medical specialty, e.g. 'Cardiology', 'Orthopedics'"],
             patient_lat: Annotated[float, "Patient latitude"],
             patient_lng: Annotated[float, "Patient longitude"],
@@ -113,11 +113,11 @@ class LangChainToolkit:
             and have decided the specialty the condition requires. If it returns
             match_found=false, follow the hint in the result: retry with a larger
             radius_m, or switch to one of the available_specialties."""
-            return care.find_providers(specialty=specialty, patient_lat=patient_lat,
+            return await care.find_providers(specialty=specialty, patient_lat=patient_lat,
                                        patient_lng=patient_lng, k=k, radius_m=radius_m)
 
         @tool
-        def find_general_facilities(
+        async def find_general_facilities(
             patient_lat: Annotated[float, "Patient latitude"],
             patient_lng: Annotated[float, "Patient longitude"],
             k: Annotated[int, "How many facilities to return (default 3)"] = 3,
@@ -127,12 +127,12 @@ class LangChainToolkit:
             Only call this AFTER find_providers has returned match_found=false and
             you have exhausted your radius retries. Everything it returns must be
             presented as a general option, never as a specialist match."""
-            return care.find_general_facilities(patient_lat=patient_lat,
+            return await care.find_general_facilities(patient_lat=patient_lat,
                                                 patient_lng=patient_lng, k=k,
                                                 radius_m=radius_m)
 
         @tool
-        def find_pharmacies(
+        async def find_pharmacies(
             patient_lat: Annotated[float, "Patient latitude"],
             patient_lng: Annotated[float, "Patient longitude"],
             k: Annotated[int, "How many pharmacies to return (default 3)"] = 3,
@@ -144,11 +144,11 @@ class LangChainToolkit:
             provider, NOT prescribing: do not recommend a specific medicine, dose, or
             brand. Returns match_found=false when no pharmacy is mapped nearby — if so,
             say that plainly and never substitute a hospital or clinic for a pharmacy."""
-            return care.find_pharmacies(patient_lat=patient_lat, patient_lng=patient_lng,
+            return await care.find_pharmacies(patient_lat=patient_lat, patient_lng=patient_lng,
                                         k=k, radius_m=radius_m)
 
         @tool
-        def get_emergency_help(
+        async def get_emergency_help(
             patient_lat: Annotated[float, "Patient latitude"],
             patient_lng: Annotated[float, "Patient longitude"],
         ) -> dict:
@@ -157,7 +157,7 @@ class LangChainToolkit:
             emergency — seizure, stroke signs, major trauma or a serious accident, heavy
             bleeding, chest pain with cardiac features, fainting, or trouble breathing —
             before any specialty search, and lead the answer with the number."""
-            return care.get_emergency_help(patient_lat=patient_lat, patient_lng=patient_lng)
+            return await care.get_emergency_help(patient_lat=patient_lat, patient_lng=patient_lng)
 
         tools = [get_patient_record, update_patient_record, geocode_place,
                  find_providers, find_general_facilities, find_pharmacies,

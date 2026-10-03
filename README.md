@@ -58,6 +58,7 @@ proven by an offline test harness.
 careroute/                 the application (one Python package)
   config.py                every setting / env var, read once into Settings
   container.py             builds and wires every object (composition root)
+  runtime.py               event-loop helper (Windows + async Postgres)
   __main__.py              CLI demo: python -m careroute "..."
   api/                     HTTP layer
     app.py                 create_app(): routes, CORS, /healthz, /version
@@ -203,7 +204,7 @@ lives outside the process:
 
 | State | Single replica (no config) | Shared (`REDIS_URL` + `DATABASE_URL`) |
 |---|---|---|
-| Conversation transcript | LangGraph `MemorySaver` | Postgres checkpointer (`langgraph-checkpoint-postgres`) |
+| Conversation transcript | LangGraph `MemorySaver` | `AsyncPostgresSaver` (`langgraph-checkpoint-postgres`) |
 | Sessions + turn counter | `MemorySessionStore` | Redis hash with native TTL |
 | Live patient records | dict | Redis JSON with native TTL (`storage/patient_store.py`) |
 | Rate limit + daily cap | dict | Redis, atomic Lua token bucket on Redis's clock |
@@ -250,6 +251,52 @@ Run several replicas locally behind nginx:
 ```bash
 docker compose up --build --scale app=3     # http://localhost:8000
 ```
+
+## Async request path
+
+A turn spends almost all of its time waiting: on the model (seconds), on
+Postgres, Redis, PostGIS, OSRM and Nominatim (milliseconds each). With sync
+handlers FastAPI ran every request on a 40-thread pool, so one replica served
+at most ~40 concurrent turns however idle its CPU was. Now everything awaits:
+
+| Layer | Async implementation |
+|---|---|
+| Handlers, rate limit, API key | `async def` routes and dependencies |
+| Model | `ChatOpenAI.ainvoke`; tool calls from one reply run concurrently |
+| Conversation state | `AsyncPostgresSaver` on psycopg's `AsyncConnectionPool` |
+| Sessions, records, rate limits | `redis.asyncio` (memory stores share the async interface) |
+| PostGIS directory | `AsyncConnectionPool` |
+| OSRM, Nominatim, Overpass, Google | one shared `httpx.AsyncClient` (keep-alive pool) |
+| Emergency | number lookup and hospital search run concurrently |
+
+Pools are opened on first use and closed by the app's shutdown hook
+(`Container.aclose()`), on the event loop that opened them.
+
+Measured with the mock model fixed at 1 s per call, N simultaneous first turns
+on one replica (memory mode):
+
+| Concurrent turns | Sync handlers | Async |
+|---|---|---|
+| 40 | 1.7 s | 2.0 s |
+| 120 | 4.3 s | 2.0 s |
+| 200 | 6.3 s | 2.8 s |
+| 1,000 | — | 14.9 s (all succeeded) |
+
+The thread-pool ceiling is gone; past ~200 the cost grows again, which is what
+the single-replica load test measures properly. One known CPU cost still runs
+on the event loop: the OSM directory's specialty matching in Python (~15 ms per
+lookup over 3,000 rows). Pushing that filter into PostGIS is the next change.
+
+**Windows + Postgres:** psycopg's async mode needs a `SelectorEventLoop`, and
+Windows defaults to `ProactorEventLoop`. Memory mode, Docker and Linux are
+unaffected. To run shared mode directly on Windows:
+
+```powershell
+uvicorn --factory careroute.api.app:create_app --loop careroute.runtime:new_event_loop
+```
+
+Without the flag, the first Postgres use fails with an error that says exactly
+this. The tests pick the right loop themselves (`tests/conftest.py`).
 
 ## Emergency triage
 
@@ -704,10 +751,6 @@ with "this is NOT a confirmed result".
 
 ## What I'd do next (talking points)
 
-- **Async request path**: handlers and the graph are still synchronous, so one
-  replica serves at most ~40 concurrent turns (the FastAPI threadpool). Move to
-  `ainvoke`, `AsyncPostgresSaver`, `redis.asyncio` and `httpx.AsyncClient`;
-  every I/O call already sits behind one class, so the change is contained.
 - **Push specialty matching into PostGIS**: precompute specialty / pharmacy /
   hospital columns at import and use a KNN `ORDER BY geom <-> point LIMIT n`
   query, instead of filtering every row in the radius in Python.

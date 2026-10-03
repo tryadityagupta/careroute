@@ -64,14 +64,14 @@ class OsmProviderDirectory(ProviderDirectory):
             out.append(f)
         return out
 
-    def fetch_nearby(self, lat: float, lng: float, radius_m: int,
+    async def fetch_nearby(self, lat: float, lng: float, radius_m: int,
                      specialty: str | None = None):
         """(facilities, None) sorted nearest-first, or (None, error_payload).
 
         Used by all three lookups AND the emergency service, so source, distance
         math and specialty matching live in exactly one place.
         """
-        elements, err = self.source.elements(lat, lng, radius_m)
+        elements, err = await self.source.elements(lat, lng, radius_m)
         if err:
             return None, err
         matches = SpecialtyMatcher(specialty) if specialty else None
@@ -124,20 +124,20 @@ class OsmProviderDirectory(ProviderDirectory):
         out.sort(key=lambda r: r["distance_km"])
         return out, None
 
-    def _shortlist_by_road(self, lat, lng, items: list[dict], k: int, sort_key) -> list[dict]:
+    async def _shortlist_by_road(self, lat, lng, items: list[dict], k: int, sort_key) -> list[dict]:
         """Shortlist on the cheap straight-line order, upgrade JUST those to
         road distance (one OSRM call), re-rank, take k."""
         shortlist = items[:max(k + 4, 8)]
-        self.router.annotate(lat, lng, shortlist)
+        await self.router.annotate(lat, lng, shortlist)
         shortlist.sort(key=sort_key)
         top = shortlist[:k]
         _strip_private(top)
         return top
 
     # --- the three lookups -----------------------------------------------------
-    def find_providers(self, specialty, patient_lat, patient_lng, k=3, radius_m=8000):
+    async def find_providers(self, specialty, patient_lat, patient_lng, k=3, radius_m=8000):
         radius_m = self.clamp_radius(radius_m)
-        facilities, err = self.fetch_nearby(patient_lat, patient_lng, radius_m, specialty)
+        facilities, err = await self.fetch_nearby(patient_lat, patient_lng, radius_m, specialty)
         if err:
             return err
 
@@ -149,14 +149,14 @@ class OsmProviderDirectory(ProviderDirectory):
                 return (f.get("matched_via") != "name", f.get("_tag_tokens", 0),
                         f["distance_km"])
             matches.sort(key=by_evidence)
-            return self._shortlist_by_road(patient_lat, patient_lng, matches, k, by_evidence)
+            return await self._shortlist_by_road(patient_lat, patient_lng, matches, k, by_evidence)
 
         # Miss: hand back the nearest GENERAL facilities now (labelled, with road
         # distance) so a minor complaint isn't forced to chase a far specialist.
         # Narrow boutiques are dropped unless that would leave nothing.
         general = [f for f in self.dedupe(facilities) if not is_narrow_specialty(f)]
         alternatives = (general or self.dedupe(facilities))[:3]
-        self.router.annotate(patient_lat, patient_lng, alternatives)
+        await self.router.annotate(patient_lat, patient_lng, alternatives)
         alternatives = [{"name": f["name"], "facility": f["facility"],
                          "distance_km": f["distance_km"],
                          "drive_min_no_traffic": f.get("drive_min_no_traffic"),
@@ -181,9 +181,9 @@ class OsmProviderDirectory(ProviderDirectory):
                      "general_alternatives as specialists."),
         }
 
-    def find_general_facilities(self, patient_lat, patient_lng, k=3, radius_m=8000):
+    async def find_general_facilities(self, patient_lat, patient_lng, k=3, radius_m=8000):
         radius_m = self.clamp_radius(radius_m)
-        facilities, err = self.fetch_nearby(patient_lat, patient_lng, radius_m)
+        facilities, err = await self.fetch_nearby(patient_lat, patient_lng, radius_m)
         if err:
             return err
         if not facilities:
@@ -191,7 +191,7 @@ class OsmProviderDirectory(ProviderDirectory):
                     "reason": f"No healthcare facilities at all within {radius_m / 1000:.1f} km."}
         facilities = self.dedupe(facilities)
         facilities = [f for f in facilities if not is_narrow_specialty(f)] or facilities
-        top = self._shortlist_by_road(patient_lat, patient_lng, facilities, k,
+        top = await self._shortlist_by_road(patient_lat, patient_lng, facilities, k,
                                       lambda f: f["distance_km"])
         for f in top:
             f["is_specialist_match"] = False
@@ -199,9 +199,9 @@ class OsmProviderDirectory(ProviderDirectory):
                                "specialists. Present them only as general options."),
                 "facilities": top}
 
-    def find_pharmacies(self, patient_lat, patient_lng, k=3, radius_m=8000):
+    async def find_pharmacies(self, patient_lat, patient_lng, k=3, radius_m=8000):
         radius_m = self.clamp_radius(radius_m)
-        facilities, err = self.fetch_nearby(patient_lat, patient_lng, radius_m)
+        facilities, err = await self.fetch_nearby(patient_lat, patient_lng, radius_m)
         if err:
             return err
         pharmacies = self.dedupe([f for f in facilities if f.get("is_pharmacy")])
@@ -212,7 +212,7 @@ class OsmProviderDirectory(ProviderDirectory):
                     "hint": ("Do NOT offer a hospital or clinic as a pharmacy. Tell the "
                              "user no pharmacy was found in the map data nearby; suggest "
                              "they widen the search or check locally.")}
-        top = self._shortlist_by_road(patient_lat, patient_lng, pharmacies, k,
+        top = await self._shortlist_by_road(patient_lat, patient_lng, pharmacies, k,
                                       lambda f: f["distance_km"])
         return {
             "disclaimer": "Nearby pharmacies/chemists for obtaining medicines.",

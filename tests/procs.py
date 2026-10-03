@@ -12,7 +12,10 @@ import httpx
 
 from careroute.config import PROJECT_ROOT
 
-APP = ["--factory", "careroute.api.app:create_app"]
+# --loop: replicas use the event loop async psycopg needs on every platform
+# (Windows' default loop can't run it; see careroute/runtime.py).
+APP = ["--factory", "careroute.api.app:create_app",
+       "--loop", "careroute.runtime:new_event_loop"]
 MOCK = ["mock_llm.app:app"]
 
 
@@ -34,7 +37,8 @@ def start(target: list[str], port: int, env: dict, probe: str = "/healthz") -> s
         except httpx.HTTPError:
             pass
         if p.poll() is not None:
-            raise RuntimeError(f"{target} on :{port} died: {p.stderr.read().decode()[-800:]}")
+            raise RuntimeError(
+                f"{target} on :{port} died: {p.stderr.read().decode()[-800:]}")
         time.sleep(0.2)
     raise RuntimeError(f"{target} on :{port} never became healthy")
 

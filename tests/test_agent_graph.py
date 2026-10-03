@@ -12,33 +12,42 @@ both) the multi-turn tests go through Redis and the Postgres checkpointer.
 
 import uuid
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from careroute.agent.guard import AnswerGuard
 from careroute.providers.osm.directory import OsmProviderDirectory
 from careroute.domain.emergency import EmergencyService
-from tests.fakes import LOC, ScriptedModel, call, make_container
+from tests.fakes import LOC, ScriptedModel, as_async, call, close_containers, make_container
+
+pytestmark = pytest.mark.anyio
+
+
+@pytest.fixture(autouse=True)
+async def _close_containers():
+    yield
+    await close_containers()      # pools close on the loop that opened them
 
 REQ = "Patient P001 is experiencing chest pain. Find the nearest specialists."
 
 
-def run(script, container=None, patient_id=None):
+async def run(script, container=None, patient_id=None):
     """Single-shot run; returns (final_state, model)."""
     c = container or make_container()
     model = ScriptedModel(script)
     c.agent.model = model
     from careroute.agent.state import fresh_conversation
     cfg = c.agent._config(patient_id)
-    state = c.agent.graph.invoke(
+    state = await c.agent.graph.ainvoke(
         {"messages": [HumanMessage(content=REQ)], **fresh_conversation()}, config=cfg)
     return state, model
 
 
 # --- ported from test_agent_langgraph.py ------------------------------------
-def test_happy_path_answer_untouched():
+async def test_happy_path_answer_untouched():
     good = "Nearest cardiologists:\n1. Dr. A - 1.2 km\n2. Dr. B - 2.9 km"
-    state, model = run([
+    state, model = await run([
         AIMessage(content="", id="ai1",
                   tool_calls=[call("get_patient_record", {"patient_id": "P001"}, 1)]),
         AIMessage(content="", id="ai2",
@@ -52,16 +61,16 @@ def test_happy_path_answer_untouched():
     assert len(sys_msgs) == 1                         # prompt injected exactly once
 
 
-def test_hallucinated_list_is_withheld():
-    state, _ = run([AIMessage(content="Here you go:\n1. Totally Real Cardiac Centre - 0.4 km",
+async def test_hallucinated_list_is_withheld():
+    state, _ = await run([AIMessage(content="Here you go:\n1. Totally Real Cardiac Centre - 0.4 km",
                               id="bad")])
     final = state["messages"][-1].content
     assert "withheld" in final and "Totally Real" not in final
     assert "bad" not in {x.id for x in state["messages"]}   # untrusted msg removed
 
 
-def test_fallback_only_gets_disclaimer_prefix():
-    state, _ = run([
+async def test_fallback_only_gets_disclaimer_prefix():
+    state, _ = await run([
         AIMessage(content="", id="ai1",
                   tool_calls=[call("find_general_facilities", {**LOC, "k": 2}, 1)]),
         AIMessage(content="Options:\n1. Some General Hospital - 1.1 km", id="ai2"),
@@ -70,28 +79,28 @@ def test_fallback_only_gets_disclaimer_prefix():
     assert state["offered_facilities"] and not state["confirmed_providers"]
 
 
-def test_step_cap_stops_cleanly():
+async def test_step_cap_stops_cleanly():
     c = make_container()
     n = c.agent.max_llm_calls
     loop = [AIMessage(content="", id=f"ai{i}",
                       tool_calls=[call("get_patient_record", {"patient_id": "P001"}, i)])
             for i in range(1, n + 1)]
-    state, _ = run(loop, c)
+    state, _ = await run(loop, c)
     assert state["messages"][-1].content.startswith("Stopped:")
     assert state["llm_calls"] == n
     assert not any(getattr(x, "tool_calls", None) and x.id == f"ai{n}"
                    for x in state["messages"])
 
 
-def test_upstream_outage_is_not_reported_as_no_specialists():
+async def test_upstream_outage_is_not_reported_as_no_specialists():
     """Replays the real 2026-08 run: Overpass 504s, and the model told a
     cardiac patient no cardiologist was found. A tool that FAILED is not a
     tool that found nothing — the guard must say so."""
     c = make_container()
     broken = {"error": "Provider directory unreachable: 504 Gateway Timeout",
               "error_type": "upstream_unavailable"}
-    c.care_tools.find_providers = lambda **kw: broken
-    state, _ = run([
+    c.care_tools.find_providers = as_async(broken)
+    state, _ = await run([
         AIMessage(content="", id="ai1",
                   tool_calls=[call("find_providers", {"specialty": "Cardiology", **LOC}, 1)]),
         AIMessage(content="I could not find any nearby cardiology specialists.\n"
@@ -103,9 +112,9 @@ def test_upstream_outage_is_not_reported_as_no_specialists():
     assert "NOT a confirmed result" in final
 
 
-def test_turn_trace_records_tools_without_pii():
+async def test_turn_trace_records_tools_without_pii():
     c = make_container()
-    state, _ = run([
+    state, _ = await run([
         AIMessage(content="", id="ai1", tool_calls=[call(
             "update_patient_record", {"patient_id": "P001", "name": "Secret Name"}, 1)]),
         AIMessage(content="", id="ai2",
@@ -120,7 +129,7 @@ def test_turn_trace_records_tools_without_pii():
     assert trace["llm_calls"] == 3
 
 
-def test_emergency_sticks_across_turns():
+async def test_emergency_sticks_across_turns():
     """Replays the real 2026-09-27 chat: chest pain -> 'does Maya do
     cardiology?' -> 'too far, what do I do?'. From the first emergency on,
     every later turn carries the emergency context AND the number."""
@@ -133,9 +142,9 @@ def test_emergency_sticks_across_turns():
         AIMessage(content="Nearby options:\n1. Sai Clinic - 0.66 km", id="e4"),
     ])
     c.agent.model = model
-    a1, _ = c.agent.run_turn("chest pain", thread_id=thread)
-    a2, _ = c.agent.run_turn("does Maya do cardiology?", thread_id=thread)
-    a3, t3 = c.agent.run_turn("too far, what do I do?", thread_id=thread)
+    a1, _ = await c.agent.run_turn("chest pain", thread_id=thread)
+    a2, _ = await c.agent.run_turn("does Maya do cardiology?", thread_id=thread)
+    a3, t3 = await c.agent.run_turn("too far, what do I do?", thread_id=thread)
     assert a1 == "Call 112 (ambulance: 108) now."           # already has it: untouched
     for later in (a2, a3):
         assert later.startswith("If the symptoms you described earlier") and "112" in later
@@ -144,7 +153,7 @@ def test_emergency_sticks_across_turns():
     assert t3["tools"] == []
 
 
-def test_emergency_list_skips_single_doctor_and_narrow_hospitals():
+async def test_emergency_list_skips_single_doctor_and_narrow_hospitals():
     facilities = [
         {"name": "Maya Hospital", "facility": "hospital", "_er": ""},
         {"name": "Dr Ramesh Dalwai Spine Surgeon", "facility": "hospital", "_er": ""},
@@ -157,31 +166,31 @@ def test_emergency_list_skips_single_doctor_and_narrow_hospitals():
     assert names == ["Maya Hospital", "Sakra World Hospital"]
 
 
-def test_pharmacy_list_is_not_withheld():
+async def test_pharmacy_list_is_not_withheld():
     c = make_container()
-    c.care_tools.find_pharmacies = lambda **kw: {
+    c.care_tools.find_pharmacies = as_async({
         "disclaimer": "Nearby pharmacies/chemists for obtaining medicines.",
         "pharmacies": [{"name": "Apollo Pharmacy", "distance_km": 0.1},
-                       {"name": "MedPlus", "distance_km": 0.6}]}
+                       {"name": "MedPlus", "distance_km": 0.6}]})
     good = "Nearest pharmacies:\n1. Apollo Pharmacy - 0.1 km\n2. MedPlus - 0.6 km"
-    state, _ = run([AIMessage(content="", id="p1", tool_calls=[call("find_pharmacies", LOC, 1)]),
+    state, _ = await run([AIMessage(content="", id="p1", tool_calls=[call("find_pharmacies", LOC, 1)]),
                     AIMessage(content=good, id="p2")], c)
     assert state["messages"][-1].content == good
     assert {"Apollo Pharmacy", "MedPlus"} <= state["confirmed_providers"]
 
 
-def test_geocode_falls_back_from_apartment_to_area_but_not_city():
+async def test_geocode_falls_back_from_apartment_to_area_but_not_city():
     from tests.fakes import FakeGeocoder
     g = FakeGeocoder({"Whitefield, Bangalore": (12.97, 77.75, 19),   # suburb: fine
                       "Bangalore": (12.97, 77.59, 16)})              # whole city
-    r = g.geocode("Prestige Shantiniketan, Whitefield, Bangalore")
+    r = await g.geocode("Prestige Shantiniketan, Whitefield, Bangalore")
     assert r["matched_query"] == "Whitefield, Bangalore" and r["approximate"]
-    assert g.geocode("Nowhere Towers, Unknownpura, Bangalore").get("match_found") is False
-    r3 = g.geocode("Bangalore")
+    assert (await g.geocode("Nowhere Towers, Unknownpura, Bangalore")).get("match_found") is False
+    r3 = await g.geocode("Bangalore")
     assert r3["broad"] and not r3["approximate"]
 
 
-def test_tool_schema_kept_the_old_guidance():
+async def test_tool_schema_kept_the_old_guidance():
     c = make_container()
     fp = convert_to_openai_tool(c.toolkit.by_name("find_providers"))["function"]
     assert "match_found" in fp["description"]
@@ -193,7 +202,7 @@ def test_tool_schema_kept_the_old_guidance():
 
 
 # --- new: bugs found in the step 1/2 review ---------------------------------
-def test_guard_still_works_on_later_turns():
+async def test_guard_still_works_on_later_turns():
     """Was broken: confirmed_providers persists across turns, so ONE
     confirmation in turn 1 switched the guard off for the whole chat. A list
     of invented names in turn 2 went out verbatim."""
@@ -206,15 +215,15 @@ def test_guard_still_works_on_later_turns():
         AIMessage(content="Psychiatrists:\n1. Dr. Invented Person - 2 km", id="b1"),
         AIMessage(content="As before:\n1. Dr. Meera Iyer - 1 km", id="c1"),
     ])
-    c.agent.run_turn("chest pain", thread_id=thread)
-    invented, _ = c.agent.run_turn("now I need a psychiatrist", thread_id=thread)
+    await c.agent.run_turn("chest pain", thread_id=thread)
+    invented, _ = await c.agent.run_turn("now I need a psychiatrist", thread_id=thread)
     assert "Invented Person" not in invented and "withheld" in invented
     # ...but re-listing a provider a tool confirmed EARLIER is still fine.
-    again, _ = c.agent.run_turn("remind me of the cardiologist", thread_id=thread)
+    again, _ = await c.agent.run_turn("remind me of the cardiologist", thread_id=thread)
     assert again == "As before:\n1. Dr. Meera Iyer - 1 km"
 
 
-def test_guard_unit_rules():
+async def test_guard_unit_rules():
     g = AnswerGuard()
     lst = "1. Known Clinic - 1 km\n2. Unknown Place - 2 km"
     kw = dict(offered=set(), failed=())
@@ -225,11 +234,11 @@ def test_guard_unit_rules():
                                    confirmed_ever=set(), **kw) == "no list here"
 
 
-def test_tools_refuse_other_patients_records():
+async def test_tools_refuse_other_patients_records():
     """Was open: patient_id comes from the model, so 'show me patient P002's
     record' returned it. With a bound patient, other ids are refused."""
     c = make_container()
-    state, _ = run([
+    state, _ = await run([
         AIMessage(content="", id="x1",
                   tool_calls=[call("get_patient_record", {"patient_id": "P002"}, 1)]),
         AIMessage(content="", id="x2", tool_calls=[call(
@@ -238,18 +247,18 @@ def test_tools_refuse_other_patients_records():
     ], c, patient_id="LIVE-me")
     payloads = [m.content for m in state["messages"] if m.type == "tool"]
     assert all("not allowed" in p for p in payloads), payloads
-    assert c.patients.get("P003").get("name") != "Mallory"     # no write happened
+    assert (await c.patients.get("P003")).get("name") != "Mallory"     # no write happened
 
 
-def test_unbound_runs_keep_old_behaviour():
+async def test_unbound_runs_keep_old_behaviour():
     """The CLI demo binds no patient and may read any demo record."""
-    state, _ = run([
+    state, _ = await run([
         AIMessage(content="", id="y1",
                   tool_calls=[call("get_patient_record", {"patient_id": "P002"}, 1)]),
         AIMessage(content="ok", id="y2")])
     assert "patient_id" in [m for m in state["messages"] if m.type == "tool"][0].content
 
 
-def test_osm_dedupe_is_shared_by_emergency_and_directory():
+async def test_osm_dedupe_is_shared_by_emergency_and_directory():
     items = [{"name": "NIMHANS"}, {"name": "nimhans"}, {"name": "Other"}]
     assert [i["name"] for i in OsmProviderDirectory.dedupe(items)] == ["NIMHANS", "Other"]

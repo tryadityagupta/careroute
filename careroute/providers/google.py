@@ -11,7 +11,7 @@ share one _search() and differ only in the query text and result shape.
 
 from __future__ import annotations
 
-import requests
+import httpx
 
 from careroute.maps.distance import haversine_km
 from careroute.providers.base import ProviderDirectory
@@ -24,14 +24,14 @@ class GooglePlacesDirectory(ProviderDirectory):
     # FieldMask = pay only for the fields you ask for. Always set it.
     FIELD_MASK = "places.displayName,places.formattedAddress,places.location"
 
-    def __init__(self, api_key: str, session: requests.Session | None = None):
+    def __init__(self, api_key: str, client: httpx.AsyncClient | None = None):
         self.api_key = api_key
-        self._http = session or requests.Session()
+        self._http = client or httpx.AsyncClient()
 
     def _clamp(self, radius_m) -> int:
         return max(500, min(int(radius_m), self.MAX_RADIUS_M))
 
-    def _search(self, text: str, lat: float, lng: float, radius_m: int):
+    async def _search(self, text: str, lat: float, lng: float, radius_m: int):
         """Returns (results, None) or (None, error_dict). Results carry
         distance_km and are sorted nearest-first (Places ranks by its own
         relevance; we re-rank strictly by distance)."""
@@ -44,9 +44,9 @@ class GooglePlacesDirectory(ProviderDirectory):
         headers = {"Content-Type": "application/json", "X-Goog-Api-Key": self.api_key,
                    "X-Goog-FieldMask": self.FIELD_MASK}
         try:
-            resp = self._http.post(self.URL, headers=headers, json=body, timeout=10)
+            resp = await self._http.post(self.URL, headers=headers, json=body, timeout=10)
             resp.raise_for_status()
-        except requests.RequestException as e:
+        except httpx.HTTPError as e:
             return None, {"error": f"Places API call failed: {e}"}
         out = []
         for p in resp.json().get("places", []):
@@ -61,8 +61,8 @@ class GooglePlacesDirectory(ProviderDirectory):
         out.sort(key=lambda x: x["distance_km"])
         return out, None
 
-    def find_providers(self, specialty, patient_lat, patient_lng, k=3, radius_m=8000):
-        results, err = self._search(f"{specialty} doctor", patient_lat, patient_lng,
+    async def find_providers(self, specialty, patient_lat, patient_lng, k=3, radius_m=8000):
+        results, err = await self._search(f"{specialty} doctor", patient_lat, patient_lng,
                                     self._clamp(radius_m))
         if err:
             return err
@@ -72,9 +72,9 @@ class GooglePlacesDirectory(ProviderDirectory):
                     "hint": "Retry with a larger radius_m, or try a broader specialty term."}
         return results[:k]
 
-    def find_general_facilities(self, patient_lat, patient_lng, k=3, radius_m=8000):
+    async def find_general_facilities(self, patient_lat, patient_lng, k=3, radius_m=8000):
         radius_m = self._clamp(radius_m)
-        results, err = self._search("hospital or clinic", patient_lat, patient_lng, radius_m)
+        results, err = await self._search("hospital or clinic", patient_lat, patient_lng, radius_m)
         if err:
             return err
         if not results:
@@ -86,9 +86,9 @@ class GooglePlacesDirectory(ProviderDirectory):
                                "specialists. Present them only as general options."),
                 "facilities": facilities}
 
-    def find_pharmacies(self, patient_lat, patient_lng, k=3, radius_m=8000):
+    async def find_pharmacies(self, patient_lat, patient_lng, k=3, radius_m=8000):
         radius_m = self._clamp(radius_m)
-        results, err = self._search("pharmacy or chemist", patient_lat, patient_lng, radius_m)
+        results, err = await self._search("pharmacy or chemist", patient_lat, patient_lng, radius_m)
         if err:
             return err
         if not results:

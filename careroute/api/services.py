@@ -73,29 +73,29 @@ class CareService(_BaseService):
 
     RECORD_TTL_S = 600     # a single-shot record is never needed after it returns
 
-    def handle(self, req: CareRequest) -> dict:
-        loc = self.locations.resolve(req.location_text, req.lat, req.lng, required=True)
+    async def handle(self, req: CareRequest) -> dict:
+        loc = await self.locations.resolve(req.location_text, req.lat, req.lng, required=True)
         # A UNIQUE id per request: the old shared "LIVE" slot let two concurrent
         # users overwrite each other's location.
         record = self.patients.new_live_record(name=req.name, lat=loc.lat, lng=loc.lng,
                                                area=loc.area, meds=req.meds)
         pid = record["patient_id"]
         # Stored (not just a local) because the agent's tools read and update it.
-        self.patients.save(record, ttl=self.RECORD_TTL_S)
+        await self.patients.save(record, ttl=self.RECORD_TTL_S)
         t0 = time.perf_counter()
         try:
-            answer, trace = self.agent.run_single(self.prompts.first_turn(record, req.symptoms),
-                                                  patient_id=pid)
-            rec = self.patients.get(pid) or {}            # may have been updated
+            answer, trace = await self.agent.run_single(
+                self.prompts.first_turn(record, req.symptoms), patient_id=pid)
+            rec = await self.patients.get(pid) or {}      # may have been updated
             self._log("/care", req.symptoms, req, rec, t0, answer=answer, trace=trace)
             return {"answer": answer, "location": loc.info}
         except Exception as exc:
-            self._log("/care", req.symptoms, req, self.patients.safe_get(pid), t0,
+            self._log("/care", req.symptoms, req, await self.patients.safe_get(pid), t0,
                       answer=None, status="error", error=exc)
             raise
         finally:
             try:
-                self.patients.delete(pid)    # best-effort; the TTL cleans up too
+                await self.patients.delete(pid)    # best-effort; the TTL cleans up too
             except Exception:
                 pass
 
@@ -107,22 +107,22 @@ class ChatService(_BaseService):
         super().__init__(*args, **kwargs)
         self.sessions = sessions
 
-    def handle(self, req: ChatRequest) -> dict:
+    async def handle(self, req: ChatRequest) -> dict:
         # Two turns of ONE conversation (double click, retry) must not run at
         # once on two replicas: both would read the same checkpoint and lose a
         # turn. Different conversations stay fully parallel.
         token = None
         if req.session_id:
-            token = self.sessions.acquire_turn_lock(req.session_id)
+            token = await self.sessions.acquire_turn_lock(req.session_id)
             if token is None:
                 raise HTTPException(409, "Still working on your previous message — "
                                          "please wait for that answer before sending another.")
         try:
-            return self._turn(req)
+            return await self._turn(req)
         finally:
             if token:
                 try:
-                    self.sessions.release_turn_lock(req.session_id, token)
+                    await self.sessions.release_turn_lock(req.session_id, token)
                 except Exception:
                     pass                     # the lock's own TTL frees it
 
@@ -135,35 +135,36 @@ class ChatService(_BaseService):
             return {"label": rec.get("area") or "the place you mentioned", "source": "chat"}
         return None
 
-    def _turn(self, req: ChatRequest) -> dict:
+    async def _turn(self, req: ChatRequest) -> dict:
         # Memory backend housekeeping; a no-op with Redis (TTLs do it).
-        for pid in self.sessions.sweep():
-            self.patients.delete(pid)
+        for pid in await self.sessions.sweep():
+            await self.patients.delete(pid)
         if not req.message.strip():
             raise HTTPException(400, "message must not be empty.")
 
-        sess = self.sessions.get_session(req.session_id)
+        sess = await self.sessions.get_session(req.session_id)
         if sess is None:
             # --- turn 1 ------------------------------------------------------
             # Resolve BEFORE creating anything, so an unknown place leaves no
             # orphan session. No location at all is allowed: the agent takes it
             # from the message, or asks.
-            loc = self.locations.resolve(req.location_text, req.lat, req.lng, required=False)
+            loc = await self.locations.resolve(req.location_text, req.lat, req.lng,
+                                               required=False)
             rec = self.patients.new_live_record(
                 name=req.name, lat=loc.lat if loc else None, lng=loc.lng if loc else None,
                 area=loc.area if loc else None, meds=req.meds)
             loc_info = loc.info if loc else None
             # Record first, session second: a session must never point at a
             # record that doesn't exist yet.
-            self.patients.save(rec)
-            session_id = self.sessions.create_session(rec["patient_id"])
+            await self.patients.save(rec)
+            session_id = await self.sessions.create_session(rec["patient_id"])
             turn, new_conversation = 1, True
             user_message = self.prompts.first_turn(rec, req.message)
         else:
             # --- follow-up -----------------------------------------------------
             session_id = req.session_id
-            turn, new_conversation = self.sessions.next_turn(session_id), False
-            rec = self.patients.get(sess["patient_id"])
+            turn, new_conversation = await self.sessions.next_turn(session_id), False
+            rec = await self.patients.get(sess["patient_id"])
             if rec is None:
                 raise HTTPException(409, "Session expired. Please start a new conversation.")
             for med in self.patients.parse_meds(req.meds):
@@ -174,27 +175,28 @@ class ChatService(_BaseService):
             # The page sends a location on a follow-up only when the user
             # CHANGED it (resending GPS every turn undid locations the agent set).
             loc_info = None
-            moved = self.locations.resolve(req.location_text, req.lat, req.lng, required=False)
+            moved = await self.locations.resolve(req.location_text, req.lat, req.lng,
+                                                 required=False)
             if moved:
                 rec["lat"], rec["lng"], rec["area"] = moved.lat, moved.lng, moved.area
                 loc_info = moved.info
-            self.patients.save(rec)          # write back; also refreshes the TTL
+            await self.patients.save(rec)    # write back; also refreshes the TTL
             user_message = self.prompts.follow_up(rec, req.message)
 
         pid = rec["patient_id"]
         before = (rec.get("lat"), rec.get("lng"))
         t0 = time.perf_counter()
         try:
-            answer, trace = self.agent.run_turn(user_message, thread_id=session_id,
-                                                patient_id=pid,
-                                                new_conversation=new_conversation)
-            rec = self.patients.get(pid) or {}             # reflects agent updates
+            answer, trace = await self.agent.run_turn(user_message, thread_id=session_id,
+                                                      patient_id=pid,
+                                                      new_conversation=new_conversation)
+            rec = await self.patients.get(pid) or {}       # reflects agent updates
             loc_info = self._moved_in_chat(rec, before) or loc_info
             self._log("/chat", req.message, req, rec, t0, answer=answer,
                       session_id=session_id, turn=turn, trace=trace)
             return {"session_id": session_id, "answer": answer, "location": loc_info}
         except Exception as exc:
-            self._log("/chat", req.message, req, self.patients.safe_get(pid), t0,
+            self._log("/chat", req.message, req, await self.patients.safe_get(pid), t0,
                       answer=None, session_id=session_id, turn=turn,
                       status="error", error=exc)
             raise

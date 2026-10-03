@@ -7,6 +7,9 @@ A user in Panathur got chemists 1.1+ km away while one sat ~200 m from them:
   * a long Indian postal address never geocoded.
 """
 
+import httpx
+import pytest
+
 from careroute.maps.geocoding import NominatimGeocoder
 from careroute.maps.routing import OsrmRouter
 from careroute.providers.osm.directory import OsmProviderDirectory
@@ -29,9 +32,12 @@ FAKE_OSM = [
 ]
 
 
-def test_medical_supply_and_named_shops_count_as_pharmacies():
-    osm = OsmProviderDirectory(StaticSource(FAKE_OSM), OsrmRouter("http://127.0.0.1:9"))
-    names = [p["name"] for p in osm.find_pharmacies(*USER, k=5)["pharmacies"]]
+@pytest.mark.anyio
+async def test_medical_supply_and_named_shops_count_as_pharmacies():
+    async with httpx.AsyncClient() as http:          # OSRM on a closed port: straight-line
+        osm = OsmProviderDirectory(StaticSource(FAKE_OSM),
+                                   OsrmRouter("http://127.0.0.1:9", client=http))
+        names = [p["name"] for p in (await osm.find_pharmacies(*USER, k=5))["pharmacies"]]
     assert "Sri Sai Medicals" in names and "Ganesh Pharma & General" in names
     assert "Manipal Medical Centre" not in names          # a clinic is not a chemist
     assert names[0] in ("Ganesh Pharma & General", "Sri Sai Medicals")

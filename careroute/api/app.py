@@ -8,13 +8,14 @@ Then open http://localhost:8000
 create_app() is a FACTORY: nothing is built or connected at import time.
 Tests call create_app(container) with a Container whose parts they replaced.
 
-Handlers are still sync `def` (FastAPI runs them in its threadpool, ~40
-concurrent requests per process). Converting them to async is the next
-change; with I/O behind the classes in maps/, storage/ and agent/, that is a
-change to those classes, not to this file's structure.
+Handlers are `async def` and everything under them awaits: the model, the
+checkpointer, Redis, PostGIS, OSRM and Nominatim. A replica's concurrency is
+therefore bounded by its CPU and its connection pools, not by a thread count.
 """
 
 from __future__ import annotations
+
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +26,7 @@ from careroute.api.schemas import CareRequest, ChatRequest
 from careroute.container import Container
 from careroute.maps.postgis import GeoUnavailable
 
-CODE_VERSION = "2026-10-oop-package"
+CODE_VERSION = "2026-10-async"
 
 
 def create_app(container: Container | None = None) -> FastAPI:
@@ -33,7 +34,18 @@ def create_app(container: Container | None = None) -> FastAPI:
     s = c.settings
     print(c.describe())
 
-    app = FastAPI(title="CareRoute")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Build the sync, CPU/file-bound parts (seed data, provider directory)
+        # BEFORE the first request, so a bad config fails at boot and the
+        # first user doesn't pay for loading the JSON.
+        _ = (c.patients, c.directory)
+        yield
+        # Graceful shutdown: close the HTTP client and the Redis/Postgres pools
+        # on the loop that opened them.
+        await c.aclose()
+
+    app = FastAPI(title="CareRoute", lifespan=lifespan)
     app.state.container = c
     # Lock to your real origin(s) in production via CAREROUTE_ALLOWED_ORIGINS.
     app.add_middleware(CORSMiddleware, allow_origins=list(s.allowed_origins),
@@ -44,19 +56,22 @@ def create_app(container: Container | None = None) -> FastAPI:
     guards = [Depends(c.gate.rate_limit), Depends(c.gate.require_api_key)]
 
     @app.get("/")
-    def home():
+    async def home():
         return FileResponse(s.web_dir / "index.html")
 
+    # async def: FastAPI runs these ON the event loop. (A plain def would run
+    # each request on a 40-thread pool, which capped a replica at ~40
+    # concurrent turns no matter how idle its CPU was.)
     @app.post("/care", dependencies=guards)
-    def care(req: CareRequest):
-        return c.care_service.handle(req)
+    async def care(req: CareRequest):
+        return await c.care_service.handle(req)
 
     @app.post("/chat", dependencies=guards)
-    def chat(req: ChatRequest):
-        return c.chat_service.handle(req)
+    async def chat(req: ChatRequest):
+        return await c.chat_service.handle(req)
 
     @app.get("/healthz")
-    def healthz():
+    async def healthz():
         """Readiness: can THIS replica reach its shared stores?
 
         Point the readiness probe here and keep liveness on /version, so a
@@ -68,20 +83,20 @@ def create_app(container: Container | None = None) -> FastAPI:
         checks, ok = {}, True
         if c.redis:
             try:
-                c.redis.ping()
+                await c.redis.ping()
                 checks["redis"] = "ok"
             except Exception as e:
                 checks["redis"], ok = f"error: {type(e).__name__}", False
         if s.use_postgres:
             try:
-                c.checkpointers.ping()
+                await c.checkpointers.ping()
                 checks["postgres"] = "ok"
             except Exception as e:
                 checks["postgres"], ok = f"error: {type(e).__name__}", False
         info = {}
         if s.osm_source == "postgis":
             try:
-                info["provider_directory"] = c.geo_db.dataset_info()
+                info["provider_directory"] = await c.geo_db.dataset_info()
             except GeoUnavailable as e:
                 info["provider_directory"] = f"unavailable: {e}"
         body = {"status": "ok" if ok else "degraded",
@@ -90,7 +105,7 @@ def create_app(container: Container | None = None) -> FastAPI:
         return JSONResponse(status_code=200 if ok else 503, content=body)
 
     @app.get("/version")
-    def version():
+    async def version():
         return {"version": CODE_VERSION, "commit": s.git_sha,
                 "backend": c.directory.backend_name}
 

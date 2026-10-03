@@ -13,6 +13,8 @@ and get the same result SHAPES back from every implementation:
 
 Any of them may instead return {"error": ..., "error_type": ...} when the
 directory itself is unreachable — a failed lookup is not an empty lookup.
+
+All three are coroutines: a backend may wait on a database or an HTTP API.
 """
 
 from __future__ import annotations
@@ -25,13 +27,13 @@ class ProviderDirectory(ABC):
     backend_name: str = "abstract"
 
     @abstractmethod
-    def find_providers(self, specialty: str, patient_lat: float, patient_lng: float,
+    async def find_providers(self, specialty: str, patient_lat: float, patient_lng: float,
                        k: int = 3, radius_m: int = 8000) -> list | dict: ...
 
     @abstractmethod
-    def find_general_facilities(self, patient_lat: float, patient_lng: float,
+    async def find_general_facilities(self, patient_lat: float, patient_lng: float,
                                 k: int = 3, radius_m: int = 8000) -> dict: ...
 
     @abstractmethod
-    def find_pharmacies(self, patient_lat: float, patient_lng: float,
+    async def find_pharmacies(self, patient_lat: float, patient_lng: float,
                         k: int = 3, radius_m: int = 8000) -> dict: ...

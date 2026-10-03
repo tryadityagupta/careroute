@@ -34,29 +34,29 @@ class PatientRepository:
                 "area": area, "lat": lat, "lng": lng, "history": [],
                 "current_medications": self.parse_meds(meds)}
 
-    def get(self, patient_id: str) -> dict | None:
-        rec = self.live.get(patient_id)
+    async def get(self, patient_id: str) -> dict | None:
+        rec = await self.live.get(patient_id)
         if rec is None:
             rec = self._static.get(patient_id)
         return rec
 
-    def safe_get(self, patient_id: str) -> dict:
+    async def safe_get(self, patient_id: str) -> dict:
         """For ERROR paths: never raises (the error may be that the store is down)."""
         try:
-            return self.get(patient_id) or {}
+            return await self.get(patient_id) or {}
         except Exception:
             return {}
 
-    def save(self, record: dict, ttl: int | None = None) -> None:
-        self.live.put(record["patient_id"], record, ttl=ttl)
+    async def save(self, record: dict, ttl: int | None = None) -> None:
+        await self.live.put(record["patient_id"], record, ttl=ttl)
 
-    def delete(self, patient_id: str) -> None:
-        self.live.delete(patient_id)
+    async def delete(self, patient_id: str) -> None:
+        await self.live.delete(patient_id)
 
-    def update(self, patient_id: str, *, name=None, medications=None,
+    async def update(self, patient_id: str, *, name=None, medications=None,
                lat=None, lng=None, area=None) -> dict | None:
         """Copy-on-write edit; only the fields given change. None if unknown."""
-        rec = self.get(patient_id)
+        rec = await self.get(patient_id)
         if rec is None:
             return None
         rec = copy.deepcopy(rec)
@@ -73,5 +73,5 @@ class PatientRepository:
             rec["lat"], rec["lng"] = float(lat), float(lng)
         if area:
             rec["area"] = area.strip()
-        self.live.put(patient_id, rec)
+        await self.live.put(patient_id, rec)
         return rec

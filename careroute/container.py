@@ -14,13 +14,18 @@ properties tests rely on:
         c = Container(settings)
         c.geocoder = FakeGeocoder(...)        # before c.agent is touched
         c.agent.model = ScriptedModel([...])  # swap the model any time
+
+ASYNC LIFECYCLE: the I/O parts (HTTP client, Redis client, Postgres pools)
+bind to the event loop they are first used on. aclose() closes whichever were
+built; the FastAPI app calls it on shutdown, tests call it at the end of each
+test, and the CLI calls it before exiting.
 """
 
 from __future__ import annotations
 
 from functools import cached_property
 
-import requests
+import httpx
 
 from careroute.agent.checkpointer import CheckpointerFactory
 from careroute.agent.graph import CareRouteAgent
@@ -72,9 +77,14 @@ class Container:
         return RedisConnection(s.redis_url, timeout_s=s.redis_timeout_s, key_prefix=s.key_prefix)
 
     @cached_property
-    def http(self) -> requests.Session:
-        """One pooled HTTP session for OSRM / Nominatim / Google (keep-alive)."""
-        return requests.Session()
+    def http(self) -> httpx.AsyncClient:
+        """ONE pooled async HTTP client for OSRM / Nominatim / Overpass /
+        Google: keep-alive connections, shared by every request. Per-call
+        timeouts are set by each service. The pool limits are sized for a
+        replica serving hundreds of concurrent turns."""
+        return httpx.AsyncClient(
+            timeout=10.0,
+            limits=httpx.Limits(max_connections=200, max_keepalive_connections=50))
 
     @cached_property
     def geo_db(self) -> GeoDatabase:
@@ -118,18 +128,19 @@ class Container:
     @cached_property
     def geocoder(self) -> NominatimGeocoder:
         s = self.settings
-        return NominatimGeocoder(s.nominatim_url, countries=s.geocode_countries, session=self.http)
+        return NominatimGeocoder(s.nominatim_url, countries=s.geocode_countries, client=self.http)
 
     @cached_property
     def router(self) -> OsrmRouter:
         s = self.settings
-        return OsrmRouter(s.osrm_base_url, timeout_s=s.osrm_timeout_s, session=self.http)
+        return OsrmRouter(s.osrm_base_url, timeout_s=s.osrm_timeout_s, client=self.http)
 
     @cached_property
     def osm_source(self) -> ElementSource:
         if self.settings.osm_source == "postgis":
             return PostgisSource(self.geo_db)
-        return OverpassSource(OverpassDiskCache(self.settings.data_dir / "osm_cache.json"))
+        return OverpassSource(OverpassDiskCache(self.settings.data_dir / "osm_cache.json"),
+                              client=self.http)
 
     @cached_property
     def osm_directory(self) -> OsmProviderDirectory:
@@ -144,7 +155,7 @@ class Container:
             return self.osm_directory
         if backend == "google":
             from careroute.providers.google import GooglePlacesDirectory
-            return GooglePlacesDirectory(self.settings.google_maps_api_key, session=self.http)
+            return GooglePlacesDirectory(self.settings.google_maps_api_key, client=self.http)
         return JsonProviderDirectory(self.seed_data.providers())
 
     @cached_property
@@ -207,3 +218,18 @@ class Container:
     @cached_property
     def chat_service(self) -> ChatService:
         return ChatService(**self._service_args(), sessions=self.sessions)
+
+    # --- lifecycle -----------------------------------------------------------
+    async def aclose(self) -> None:
+        """Close every pool this container opened, on the loop that opened it.
+        Only touches parts that were actually built (cached_property stores
+        built parts in the instance __dict__)."""
+        built = self.__dict__
+        if "http" in built:
+            await self.http.aclose()
+        if built.get("redis") is not None:
+            await self.redis.aclose()
+        if "checkpointers" in built:
+            await self.checkpointers.aclose()
+        if "geo_db" in built:
+            await self.geo_db.aclose()

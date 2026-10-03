@@ -49,12 +49,12 @@ class RequestGate:
         return request.client.host if request.client else "unknown"
 
     # --- FastAPI dependencies ------------------------------------------------
-    def rate_limit(self, request: Request) -> None:
+    async def rate_limit(self, request: Request) -> None:
         """Daily backstop, then per-IP bucket. Wire it FIRST so even
         unauthenticated floods are throttled before a key is checked."""
         try:
-            daily_ok = self.daily_cap.allow()
-            allowed, retry = self.limiter.check(self.client_ip(request))
+            daily_ok = await self.daily_cap.allow()
+            allowed, retry = await self.limiter.check(self.client_ip(request))
         except Exception as e:     # Redis unreachable
             # FAIL OPEN on purpose: a Redis blip should briefly weaken abuse
             # protection, not take the service down. (Sessions fail CLOSED —
@@ -67,7 +67,7 @@ class RequestGate:
             raise HTTPException(429, "Too many requests. Please slow down.",
                                 headers={"Retry-After": str(max(1, ceil(retry)))})
 
-    def require_api_key(self, x_api_key: str | None = Header(default=None)) -> None:
+    async def require_api_key(self, x_api_key: str | None = Header(default=None)) -> None:
         """Enforce X-API-Key iff keys are configured (constant-time compare)."""
         if not self.api_keys:
             return

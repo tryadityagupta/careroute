@@ -13,13 +13,16 @@ DESIGN
     and "is there a provider" never depends on OSRM.
 
 Point OSRM_BASE_URL at the self-hosted `osrm` Compose service for load tests.
+
+ASYNC: one shared httpx.AsyncClient (pooled keep-alive connections) is
+injected by the container; a request waiting on OSRM yields the event loop.
 """
 
 from __future__ import annotations
 
 import time
 
-import requests
+import httpx
 
 from careroute.maps.cache import LRUCache
 
@@ -27,20 +30,20 @@ from careroute.maps.cache import LRUCache
 class OsrmRouter:
     def __init__(self, base_url: str, *, timeout_s: float = 3.0,
                  cache_size: int = 20000,
-                 session: requests.Session | None = None):
+                 client: httpx.AsyncClient | None = None):
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_s
         # Road distances between two points barely change; key on ~11 m cells.
         self._cache = LRUCache(cache_size)
-        # One pooled session per process: keep-alive instead of a new TCP
+        # One pooled client per process: keep-alive instead of a new TCP
         # (and TLS) handshake per lookup.
-        self._http = session or requests.Session()
+        self._http = client or httpx.AsyncClient()
 
     @staticmethod
     def _key(origin_lat, origin_lng, lat, lng):
         return (round(origin_lat, 4), round(origin_lng, 4), round(lat, 4), round(lng, 4))
 
-    def road_distances(self, origin_lat: float, origin_lng: float,
+    async def road_distances(self, origin_lat: float, origin_lng: float,
                        dests: list[tuple[float, float]]) -> list[dict] | None:
         """[{distance_km, duration_min}] aligned with dests, or None if OSRM
         is unavailable (the caller falls back to haversine)."""
@@ -60,7 +63,7 @@ class OsrmRouter:
 
         t0 = time.perf_counter()
         try:
-            resp = self._http.get(url, params=params, timeout=self.timeout_s)
+            resp = await self._http.get(url, params=params, timeout=self.timeout_s)
             print(f"[routing] OSRM took {time.perf_counter() - t0:.1f}s")
             resp.raise_for_status()
             data = resp.json()
@@ -84,11 +87,11 @@ class OsrmRouter:
             for k, v in zip(keys, out):
                 self._cache.put(k, v)
             return out
-        except (requests.RequestException, ValueError, KeyError, IndexError) as e:
+        except (httpx.HTTPError, ValueError, KeyError, IndexError) as e:
             print(f"[routing] OSRM unavailable ({str(e)[:80]}); using haversine")
             return None
 
-    def annotate(self, origin_lat: float, origin_lng: float, items: list[dict]) -> list[dict]:
+    async def annotate(self, origin_lat: float, origin_lng: float, items: list[dict]) -> list[dict]:
         """Upgrade a shortlist of facility dicts to road distance, IN PLACE.
 
         Success: overwrites distance_km, adds drive_min_no_traffic and
@@ -97,7 +100,7 @@ class OsrmRouter:
         """
         if not items:
             return items
-        road = self.road_distances(origin_lat, origin_lng,
+        road = await self.road_distances(origin_lat, origin_lng,
                                    [(it["lat"], it["lng"]) for it in items])
         if road is None:
             for it in items:

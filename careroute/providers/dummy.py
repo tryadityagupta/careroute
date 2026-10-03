@@ -17,7 +17,7 @@ class JsonProviderDirectory(ProviderDirectory):
     def __init__(self, providers: list[dict]):
         self._providers = providers           # read-only reference data
 
-    def find_providers(self, specialty, patient_lat, patient_lng, k=3, radius_m=8000):
+    async def find_providers(self, specialty, patient_lat, patient_lng, k=3, radius_m=8000):
         spec_matches = [
             {**p, "distance_km": haversine_km(patient_lat, patient_lng, p["lat"], p["lng"])}
             for p in self._providers if p["specialty"].lower() == specialty.lower()
@@ -45,7 +45,7 @@ class JsonProviderDirectory(ProviderDirectory):
         in_radius.sort(key=lambda p: p["distance_km"])
         return in_radius[:k]
 
-    def find_general_facilities(self, patient_lat, patient_lng, k=3, radius_m=8000):
+    async def find_general_facilities(self, patient_lat, patient_lng, k=3, radius_m=8000):
         scored = [{**p, "distance_km": haversine_km(patient_lat, patient_lng, p["lat"], p["lng"]),
                    "is_specialist_match": False} for p in self._providers]
         scored = [p for p in scored if p["distance_km"] * 1000 <= radius_m]
@@ -60,7 +60,7 @@ class JsonProviderDirectory(ProviderDirectory):
             "facilities": scored[:k],
         }
 
-    def find_pharmacies(self, patient_lat, patient_lng, k=3, radius_m=8000):
+    async def find_pharmacies(self, patient_lat, patient_lng, k=3, radius_m=8000):
         # The demo JSON is not a pharmacy directory: be honest, never point at
         # a clinic.
         return {"match_found": False,
